@@ -1,0 +1,14 @@
+{
+  "name": "claude-mods",
+  "owner": {
+    "name": "mmacedok"
+  },
+  "plugins": [
+    {
+      "name": "medidor",
+      "source": "./plugins/medidor",
+      "description": "Faixa acima do prompt: barra de contexto por tipo de token, totais, custo estimado da conversa e skills usadas.",
+      "version": "0.1.0"
+    }
+  ]
+}

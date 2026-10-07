@@ -418,7 +418,7 @@ function mascote(modo: Modo): string {
   )
 }
 
-const CASA = ((globalThis as any).process?.env?.USERPROFILE ?? (globalThis as any).process?.env?.HOME ?? '').split('\').join('/')
+const CASA = ((globalThis as any).process?.env?.USERPROFILE ?? (globalThis as any).process?.env?.HOME ?? '').split(String.fromCharCode(92)).join('/')
 const PASTA_HANDOFFS = `${CASA}/.claude/medidor-handoffs`
 
 const PEDIDO_HANDOFF = `Write a HANDOFF of this conversation so that a fresh session, with no history, can continue the current work without losing anything important. Write it in the language the user writes in, direct, no introduction, at most ~400 words, in these sections:

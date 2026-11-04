@@ -652,8 +652,9 @@ const falta = (resetsAt: string | undefined, agora: number) => {
 }
 
 // Tubo de gel do Portal 2, feito em código: vidro horizontal contínuo que enche da esquerda para a direita.
-// A escala é real: o tubo inteiro é 100% da janela de contexto e cada gel ocupa exatamente a sua fração, sem largura mínima.
-const TUBO_H = 24
+// A escala é real: do começo até a divisória é 100% da janela de contexto e cada gel ocupa exatamente a sua fração, sem largura mínima.
+// Depois da divisória fica a área reservada para os blobs, que o gel nunca invade.
+const TUBO_H = 32
 const TAMPA = 8 // anel de metal em cada ponta
 const PAREDE = 3 // espessura do vidro
 
@@ -676,14 +677,46 @@ const TUBO_CSS =
   '@keyframes bo{from{transform:translateX(0)}to{transform:translateX(var(--fim))}}' +
   '@media (prefers-reduced-motion:reduce){.gl,.br,.bo{animation:none}}</style>'
 
+// Tamanho da esfera em escala log: 4 tokens e 50k cabem no mesmo tubo e ainda dá para comparar.
+const raioDaEsfera = (n: number) => 5 + 6 * Math.min(1, Math.log10(1 + n) / Math.log10(50001))
+
+// Blob: oito pontos em volta do centro, ligados por uma curva fechada e suave. A deformação é feita de senos
+// que dão uma volta inteira no ciclo, então o último quadro é igual ao primeiro e o loop não tem emenda.
+const BLOB_EXT = 1.17 // quanto o blob pode passar do raio
+const BLOB_RESERVA = 104 // cabe os três blobs no maior tamanho, com o bojo do gel e os vãos
+function formaDoBlob(cx: number, cy: number, r: number, semente: number, t: number): string {
+  const n = 8
+  const pts = Array.from({ length: n }, (_, k) => {
+    const a = (k / n) * 2 * Math.PI
+    const raio = r * (1 + 0.1 * Math.sin(2 * a + t + semente * 2.1) + 0.07 * Math.sin(3 * a - t + semente * 1.3))
+    return [cx + raio * Math.cos(a), cy + raio * Math.sin(a)] as const
+  })
+  const p = (i: number) => pts[(i + n) % n] as readonly [number, number]
+  let d = `M${p(0)[0].toFixed(1)} ${p(0)[1].toFixed(1)}`
+  for (let i = 0; i < n; i++) {
+    const [a, b, c, e] = [p(i - 1), p(i), p(i + 1), p(i + 2)]
+    d +=
+      `C${(b[0] + (c[0] - a[0]) / 6).toFixed(1)} ${(b[1] + (c[1] - a[1]) / 6).toFixed(1)} ` +
+      `${(c[0] - (e[0] - b[0]) / 6).toFixed(1)} ${(c[1] - (e[1] - b[1]) / 6).toFixed(1)} ${c[0].toFixed(1)} ${c[1].toFixed(1)}`
+  }
+  return `${d}Z`
+}
+function blob(cx: number, cy: number, r: number, semente: number, dur: number, attrs: string): string {
+  const quadros = Array.from({ length: 13 }, (_, q) => formaDoBlob(cx, cy, r, semente, (q / 12) * 2 * Math.PI))
+  return `<path ${attrs} d="${quadros[0]}"><animate attributeName="d" dur="${dur}s" repeatCount="indefinite" values="${quadros.join(';')}"/></path>`
+}
+
+const ESFERA_FUNDE = 20 // largura do gel, em px, a partir da qual o tipo já é visível sem esfera
+
 function tubo(f: Fatias, janela: number, W: number): string {
   const H = TUBO_H
   const x0 = TAMPA
   const L = W - 2 * TAMPA
+  const LG = L - Math.min(BLOB_RESERVA, L * 0.3) // largura do gel quando o contexto está em 100%
   let acum = 0
   const pedacos = TIPOS.map(x => {
     const a = acum
-    acum = Math.min(L, acum + (f[x.campo] / janela) * L)
+    acum = Math.min(LG, acum + (f[x.campo] / janela) * LG)
     return { cor: x.cor, id: x.campo, b: x0 + acum, largura: acum - a }
   }).filter(p => p.largura >= 0.5)
   const fim = x0 + acum
@@ -722,27 +755,59 @@ function tubo(f: Fatias, janela: number, W: number): string {
   // brilhos molhados e bolhas dentro do gel
   const brilhos: string[] = []
   for (let x = x0 + 8, i = 0; x < fim - 4; x += 15 + ((i * 13) % 17), i++) {
-    brilhos.push(`<ellipse cx="${x}" cy="${(9.5 + (i % 3) * 0.9).toFixed(1)}" rx="${4 + (i % 4) * 1.5}" ry="${(1.4 + (i % 2) * 0.7).toFixed(1)}" fill="#fff" fill-opacity="${(0.62 + (i % 3) * 0.14).toFixed(2)}"/>`)
-    if (i % 2 === 0) brilhos.push(`<circle cx="${x + 7}" cy="${(13.5 + (i % 3)).toFixed(1)}" r="1.1" fill="#fff" fill-opacity=".55"/>`)
+    brilhos.push(`<ellipse cx="${x}" cy="${(H * 0.4 + (i % 3) * 0.9).toFixed(1)}" rx="${4 + (i % 4) * 1.5}" ry="${(1.4 + (i % 2) * 0.7).toFixed(1)}" fill="#fff" fill-opacity="${(0.62 + (i % 3) * 0.14).toFixed(2)}"/>`)
+    if (i % 2 === 0) brilhos.push(`<circle cx="${x + 7}" cy="${(H * 0.56 + (i % 3)).toFixed(1)}" r="1.1" fill="#fff" fill-opacity=".55"/>`)
   }
-  // uma gotinha solta logo à frente do gel, como a do tubo de referência
-  const ultimo = pedacos[pedacos.length - 1]
-  const gota = ultimo && fim + 20 < x0 + L
-    ? `<circle cx="${(fim + 17).toFixed(1)}" cy="13" r="2.4" fill="url(#c-${ultimo.id})"><animate attributeName="cx" dur="4s" repeatCount="indefinite" values="${(fim + 15).toFixed(1)};${(fim + 20).toFixed(1)};${(fim + 15).toFixed(1)}"/><animate attributeName="cy" dur="3s" repeatCount="indefinite" values="13;14.5;13"/></circle>`
-    : ''
   const bolhas =
     fim - x0 < 40
       ? ''
       : [0, 1, 2, 3, 4]
-          .map(i => `<circle class="bo" style="animation-delay:-${(i * 1.9).toFixed(1)}s" cx="${x0}" cy="${8 + ((i * 5) % 9)}" r="${(0.8 + (i % 3) * 0.4).toFixed(1)}" fill="#fff" fill-opacity=".38"/>`)
+          .map(i => `<circle class="bo" style="animation-delay:-${(i * 1.9).toFixed(1)}s" cx="${x0}" cy="${H * 0.33 + ((i * 5) % 9) * (H / 24)}" r="${(0.8 + (i % 3) * 0.4).toFixed(1)}" fill="#fff" fill-opacity=".38"/>`)
           .join('')
+
+  // Input, cache write e output somem perto do cache read: cada um vira uma esfera no espaço livre do tubo.
+  // A área reservada garante que sempre há lugar fora do gel; se faltar espaço, elas encolhem.
+  // Quando o pedaço de gel do tipo já dá para ver, a esfera se mistura ao gel e deixa de existir.
+  const dados = TIPOS.filter(x => x.campo !== 'lido' && f[x.campo] > 0 && (f[x.campo] / janela) * LG < ESFERA_FUNDE).map(x => ({ id: x.campo, cor: x.cor, r: raioDaEsfera(f[x.campo]) }))
+  // Medidas pelo raio externo do blob: o espaço entre eles e o balanço garantem que nunca se encostem.
+  const VAO = 4
+  const inteiro = dados.reduce((t, d) => t + 2 * d.r * BLOB_EXT, 0)
+  const livre = x0 + L - (fim + 8) - 3
+  const espacos = VAO * (dados.length + 1)
+  const fator = inteiro > 0 ? Math.min(1, (livre - espacos) / inteiro) : 1
+  const ocupado = inteiro * fator
+  const vao = Math.min(36, (livre - ocupado) / (dados.length + 1))
+  let xBlob = fim + 8 + vao
+  const esferas = dados
+    .map((d, i) => {
+      const r = d.r * fator
+      const ext = r * BLOB_EXT
+      const cx = xBlob + ext
+      xBlob += 2 * ext + vao
+      const dx = Math.max(0, Math.min(4, vao / 2 - 0.5)).toFixed(1)
+      const dy = Math.min(2.5, Math.max(0, H / 2 - PAREDE - ext)).toFixed(1)
+      const dur = 13 + i * 3
+      return (
+        `<g><animateTransform attributeName="transform" type="translate" dur="${dur * 1.5}s" repeatCount="indefinite" values="0 0;${dx} -${dy};0 ${dy};-${dx} 0;0 0"/>` +
+        blob(cx, H / 2, r, i, dur, `fill="url(#e-${d.id})" stroke="#10151a" stroke-opacity=".75" stroke-width=".8"`) +
+        `<ellipse cx="${(cx - r * 0.32).toFixed(1)}" cy="${(H / 2 - r * 0.4).toFixed(1)}" rx="${(r * 0.34).toFixed(1)}" ry="${(r * 0.22).toFixed(1)}" fill="#fff" fill-opacity=".85"/></g>`
+      )
+    })
+    .join('')
+  const coresEsferas = dados
+    .map(
+      d =>
+        `<radialGradient id="e-${d.id}" cx=".42" cy=".36" r=".68"><stop offset="0" stop-color="${tom(d.cor, 0.45)}"/>` +
+        `<stop offset=".6" stop-color="${d.cor}"/><stop offset="1" stop-color="${tom(d.cor, -0.5)}"/></radialGradient>`,
+    )
+    .join('')
 
   // o vidro é reto e entra nos anéis de metal: um tubo contínuo, sem ponta arredondada
   const interno = `x="${x0}" y="${PAREDE}" width="${L}" height="${H - 2 * PAREDE}"`
   const casca = `x="${x0 - 3}" y="1.5" width="${L + 6}" height="${H - 3}"`
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" style="--fim:${(fim - x0).toFixed(0)}px;--fora:${W + 90}px">${TUBO_CSS}` +
-    `<defs>${cores}` +
+    `<defs>${cores}${coresEsferas}` +
     `<clipPath id="dentro"><rect ${interno}/></clipPath>` +
     `<clipPath id="cheio"><rect x="${x0}" y="0" width="${Math.max(0, fim - x0 - 3).toFixed(1)}" height="${H}"/></clipPath>` +
     `<linearGradient id="metal" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#dfe5e8"/><stop offset=".5" stop-color="#8d979d"/><stop offset="1" stop-color="#4c5459"/></linearGradient>` +
@@ -752,10 +817,11 @@ function tubo(f: Fatias, janela: number, W: number): string {
     `<linearGradient id="clarao" x1="0" x2="1"><stop offset="0" stop-color="#fff" stop-opacity="0"/><stop offset=".5" stop-color="#fff" stop-opacity=".55"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>` +
     `</defs>` +
     `<rect ${casca} fill="url(#vidro)"/>` +
-    `<g clip-path="url(#dentro)">${gota}${geis}<g clip-path="url(#cheio)"><g class="br">${brilhos.join('')}</g>${bolhas}</g></g>` +
+    `<g clip-path="url(#dentro)">${geis}<g clip-path="url(#cheio)"><g class="br">${brilhos.join('')}</g>${bolhas}</g>${esferas}</g>` +
     `<path d="M${x0 - 3} 1.5H${x0 + L + 3}M${x0 - 3} ${H - 1.5}H${x0 + L + 3}" fill="none" stroke="#c4dbe6" stroke-opacity=".55"/>` +
     `<rect x="${x0}" y="3" width="${L}" height="3" fill="url(#reflexo)" filter="url(#macio)"/>` +
     `<rect x="${x0}" y="${H - 4.2}" width="${L}" height="1.2" fill="#fff" fill-opacity=".14" filter="url(#macio)"/>` +
+    `<path d="M${(x0 + LG).toFixed(1)} ${PAREDE}V${H - PAREDE}" stroke="#c4dbe6" stroke-opacity=".4" stroke-width="1" stroke-dasharray="2 2"/>` +
     `<g clip-path="url(#dentro)"><path class="gl" d="M0 ${H}L16 0h34L34 ${H}z" fill="url(#clarao)"/></g>` +
     `<rect width="${TAMPA}" height="${H}" rx="1.5" fill="url(#metal)"/><rect x="${TAMPA - 1.5}" width="1.5" height="${H}" fill="#2b3135" fill-opacity=".7"/>` +
     `<rect x="${W - TAMPA}" width="${TAMPA}" height="${H}" rx="1.5" fill="url(#metal)"/><rect x="${W - TAMPA}" width="1.5" height="${H}" fill="#2b3135" fill-opacity=".7"/>` +

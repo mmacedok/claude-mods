@@ -1,35 +1,41 @@
-# Histórico do medidor
+# FunMeter changelog
+
+## 0.5.0 (2026-11-04)
+
+- Renamed from `medidor` to FunMeter. The plugin is now `funmeter@claude-mods`, so uninstall `medidor@claude-mods` before installing it.
+- Handoffs now save to `~/.claude/funmeter-handoffs`, and Gemini job logs are read from `~/.claude/funmeter-gemini-logs`. Existing files in the old folders are not moved.
+- Docs and release notes are now in English.
 
 ## 0.4.2 (2026-11-04)
 
-- Input, cache escrito e output agora aparecem como blobs no tubo, com tamanho conforme a quantidade de tokens.
-- Os blobs mudam de forma devagar, em loop sem emenda, e nunca se encostam.
-- Quando o pedaço do tipo chega a 20 px de gel, o blob se mistura e some.
-- A ponta direita do tubo é reservada para os blobs, e uma marca pontilhada mostra onde fica 100% do contexto.
-- O tubo passou de 24 para 32 px de altura.
+- Input, cache write and output now show as blobs in the tube, sized by token count.
+- Blobs slowly change shape in a seamless loop and never touch each other.
+- When a type's slice of gel reaches 20 px wide, its blob joins the gel and disappears.
+- The right end of the tube is reserved for blobs, and a dotted mark shows where 100% of the context is.
+- The tube went from 24 to 32 px tall.
 
 ## 0.4.1 (2026-11-04)
 
-- Tubos de limite maiores, do verde ao vermelho conforme o uso.
+- Bigger limit tubes that go from green to red as usage grows.
 
 ## 0.4.0 (2026-11-04)
 
-- Velocidade da resposta em tok/s.
-- Dois tubos verticais para os limites de 5 horas e semanal, com gota caindo e gel acumulando.
-- Botão e comando `/stats`, com uso por modelo.
-- As barras do Gemini só aparecem depois de usadas.
-- O tubo agora chega até a porcentagem no fim da linha.
+- Response speed in tok/s.
+- Two vertical tubes for the 5-hour and weekly limits, with a falling drop and gel building up.
+- Stats button and `/stats` command, with usage by model.
+- Gemini bars only appear after they have been used.
+- The tube now reaches the percentage at the end of the line.
 
 ## 0.3.0 (2026-11-04)
 
-- Tubo de gel no lugar da barra simples.
-- Números compactos, como `259k` e `8.10M`.
-- Cota do Gemini na faixa.
+- A gel tube replaces the plain bar.
+- Compact numbers, like `259k` and `8.10M`.
+- Gemini quota in the band.
 
 ## 0.2.0 (2026-10-18)
 
-- Sapateado, gelatina e espirro no ciclo do mascote parado.
+- Tap dance, wobble and sneeze added to the idle mascot cycle.
 
-## Primeira versão (2026-10-07)
+## First version (2026-10-07)
 
-- Primeira versão no marketplace: barra de contexto por tipo de token, totais, custo estimado, skills usadas e Handoff.
+- First marketplace release: context bar by token type, totals, estimated cost, skills used and Handoff.

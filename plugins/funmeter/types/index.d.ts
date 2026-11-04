@@ -6,7 +6,7 @@ export type UsoModelo = Fatias & { chamadas: number }
 
 declare module 'claude-code' {
   interface PluginState {
-    medidor: {
+    funmeter: {
       fatias: Fatias | null
       medida: Medida | null
       skills: string[]

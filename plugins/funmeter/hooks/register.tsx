@@ -5,23 +5,23 @@ import type { Cota, Fatias, Limite, Medida, UsoModelo } from '../types'
 
 const ZERO: Fatias = { lido: 0, escrito: 0, input: 0, output: 0 }
 
-const fatias = atom({ plugin: 'medidor', key: 'fatias' } as const, null)
-const medida = atom({ plugin: 'medidor', key: 'medida' } as const, null)
-const skills = atom({ plugin: 'medidor', key: 'skills' } as const, [])
-const totais = atom({ plugin: 'medidor', key: 'totais' } as const, ZERO)
-const custo = atom({ plugin: 'medidor', key: 'custo' } as const, null)
-const estimado = atom({ plugin: 'medidor', key: 'estimado' } as const, 0)
-const limites = atom({ plugin: 'medidor', key: 'limites' } as const, [])
-const ocupado = atom({ plugin: 'medidor', key: 'ocupado' } as const, false)
-const feliz = atom({ plugin: 'medidor', key: 'feliz' } as const, false)
-const piso = atom({ plugin: 'medidor', key: 'piso' } as const, null)
-const mensagens = atom({ plugin: 'medidor', key: 'mensagens' } as const, 0)
-const fechado = atom({ plugin: 'medidor', key: 'fechado' } as const, null)
-const cotas = atom({ plugin: 'medidor', key: 'cotas' } as const, [])
-const velocidade = atom({ plugin: 'medidor', key: 'velocidade' } as const, null)
-const porModelo = atom({ plugin: 'medidor', key: 'porModelo' } as const, {})
-const dobrados = atom({ plugin: 'medidor', key: 'dobrados' } as const, {})
-const pulso = atom({ plugin: 'medidor', key: 'pulso' } as const, 0)
+const fatias = atom({ plugin: 'funmeter', key: 'fatias' } as const, null)
+const medida = atom({ plugin: 'funmeter', key: 'medida' } as const, null)
+const skills = atom({ plugin: 'funmeter', key: 'skills' } as const, [])
+const totais = atom({ plugin: 'funmeter', key: 'totais' } as const, ZERO)
+const custo = atom({ plugin: 'funmeter', key: 'custo' } as const, null)
+const estimado = atom({ plugin: 'funmeter', key: 'estimado' } as const, 0)
+const limites = atom({ plugin: 'funmeter', key: 'limites' } as const, [])
+const ocupado = atom({ plugin: 'funmeter', key: 'ocupado' } as const, false)
+const feliz = atom({ plugin: 'funmeter', key: 'feliz' } as const, false)
+const piso = atom({ plugin: 'funmeter', key: 'piso' } as const, null)
+const mensagens = atom({ plugin: 'funmeter', key: 'mensagens' } as const, 0)
+const fechado = atom({ plugin: 'funmeter', key: 'fechado' } as const, null)
+const cotas = atom({ plugin: 'funmeter', key: 'cotas' } as const, [])
+const velocidade = atom({ plugin: 'funmeter', key: 'velocidade' } as const, null)
+const porModelo = atom({ plugin: 'funmeter', key: 'porModelo' } as const, {})
+const dobrados = atom({ plugin: 'funmeter', key: 'dobrados' } as const, {})
+const pulso = atom({ plugin: 'funmeter', key: 'pulso' } as const, 0)
 
 const LARANJA = '#D77757'
 const CLARO = '#EE9C78'
@@ -571,7 +571,7 @@ function desenharMascote(modo: Modo): string {
 }
 
 const CASA = ((globalThis as any).process?.env?.USERPROFILE ?? (globalThis as any).process?.env?.HOME ?? '').split(String.fromCharCode(92)).join('/')
-const PASTA_HANDOFFS = `${CASA}/.claude/medidor-handoffs`
+const PASTA_HANDOFFS = `${CASA}/.claude/funmeter-handoffs`
 
 const PEDIDO_HANDOFF = `Write a HANDOFF of this conversation so that a fresh session, with no history, can continue the current work without losing anything important. Write it in the language the user writes in, direct, no introduction, at most ~400 words, in these sections:
 
@@ -900,7 +900,7 @@ function tuboVertical(rotulo: string, usado: number): string {
 
 // O painel Stats: uso por modelo nesta sessão e os jobs do Gemini.
 const PAINEL_STATS = 'stats'
-const LOGS_GEMINI = `${CASA}/.claude/medidor-gemini-logs`
+const LOGS_GEMINI = `${CASA}/.claude/funmeter-gemini-logs`
 const MAX_LOGS = 300
 type UsoGemini = { jobs: number; ok: number; falhas: number; input: number; output: number; raciocinio: number; segundos: number }
 
@@ -1248,7 +1248,7 @@ export const register: Register = on => {
       read($, velocidade),
     ])
 
-    // Sempre visível: antes da primeira resposta (e depois do Clear) desenha o medidor inteiro zerado, com o mascote animado.
+    // Sempre visível: antes da primeira resposta (e depois do Clear) desenha o funmeter inteiro zerado, com o mascote animado.
     const f = lidas ?? ZERO
 
     let meu: any

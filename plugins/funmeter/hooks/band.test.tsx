@@ -21,7 +21,7 @@ async function estado($: any, o: { turnos?: number; cresce?: number; percent?: n
 }
 
 async function desenha($: any, surface: (typeof SURFACES)[number], props = PROPS) {
-  const ui = await $.ui.mount({ plugin: 'medidor', surface, component: 'AbovePrompt', props })
+  const ui = await $.ui.mount({ plugin: 'funmeter', surface, component: 'AbovePrompt', props })
   const botao = await ui.find({ key: 'handoff' })
   const aviso = await ui.find({ key: 'aviso-handoff' })
   await ui.unmount()
@@ -71,7 +71,7 @@ test('the bar draws in a narrow band', async ($, on) => {
 test('the whole meter and mascot show before the first response', async ($, on) => {
   on('ui.render', ($$: any, e: any) => { const { Box } = $$.ui.resolve(e); return <Box key="engine" /> })
   mock.clock(on)
-  const ui = await $.ui.mount({ plugin: 'medidor', surface: 'desktop', component: 'AbovePrompt', props: PROPS })
+  const ui = await $.ui.mount({ plugin: 'funmeter', surface: 'desktop', component: 'AbovePrompt', props: PROPS })
   expect(await ui.find({ key: 'mascote' })).toBeDefined()
   expect(await ui.find({ key: 'handoff' })).toBeDefined()
   await ui.unmount()
@@ -84,7 +84,7 @@ test('the mascot shows on desktop in every mood, idle included', async ($, on) =
   mock.clock(on)
   await estado($)
   for (const isWorking of [false, true]) {
-    const ui = await $.ui.mount({ plugin: 'medidor', surface: 'desktop', component: 'AbovePrompt', props: { ...PROPS, isWorking } })
+    const ui = await $.ui.mount({ plugin: 'funmeter', surface: 'desktop', component: 'AbovePrompt', props: { ...PROPS, isWorking } })
     expect(await ui.find({ key: 'mascote' })).toBeDefined()
     expect(await ui.find({ key: 'handoff' })).toBeDefined()
     await ui.unmount()
@@ -97,7 +97,7 @@ test('stats button and limit tubes draw', async ($, on) => {
   on('ui.render', ($$: any, e: any) => { const { Box } = $$.ui.resolve(e); return <Box key="engine" /> })
   mock.clock(on)
   await estado($)
-  const ui = await $.ui.mount({ plugin: 'medidor', surface: 'desktop', component: 'AbovePrompt', props: PROPS })
+  const ui = await $.ui.mount({ plugin: 'funmeter', surface: 'desktop', component: 'AbovePrompt', props: PROPS })
   expect(await ui.find({ key: 'stats' })).toBeDefined()
   expect(await ui.find({ key: 'tubos-limite' })).toBeDefined()
   await ui.unmount()

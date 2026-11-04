@@ -86,7 +86,7 @@ Two vertical tubes show the 5-hour limit (`5h`) and the weekly limit (`wk`). A d
 | Button | What it does |
 |---|---|
 | **Mods** | Opens the list of mods |
-| **Stats** | Opens or closes the usage pane. The `/stats` command does the same |
+| **Stats** | Opens or closes the usage pane. The `/funstats` command does the same |
 | **Clear** | Runs `/clear` and resets the meter |
 | **Handoff** | Summarizes the conversation and continues in a new session |
 

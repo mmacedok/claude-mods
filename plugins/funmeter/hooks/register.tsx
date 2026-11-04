@@ -1151,7 +1151,7 @@ export const register: Register = on => {
     await acharCasa($)
     void atualizarCotas($)
     $.clock.every(COTA_OLHA_MS, () => void atualizarCotas($))
-    await $.command.register({ name: 'stats', description: 'Show or hide the usage stats pane' })
+    await $.command.register({ name: 'funstats', description: 'Show or hide the usage stats pane' })
     // Mantém os números do Gemini frescos enquanto o painel está aberto.
     $.clock.every(4000, () => {
       void $.ui.panes().then(l => {
@@ -1161,7 +1161,7 @@ export const register: Register = on => {
     return next(e)
   })
 
-  on('command.run', { command: 'stats' }, async $ => {
+  on('command.run', { command: 'funstats' }, async $ => {
     return { text: (await alternarStats($)) ? 'Stats pane open.' : 'Stats pane closed.' }
   })
 

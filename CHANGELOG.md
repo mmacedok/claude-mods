@@ -1,5 +1,9 @@
 # FunMeter changelog
 
+## 0.5.2 (2026-11-04)
+
+- The `/stats` command is now `/funstats`. Claude Code reserves `/stats`, so the old name was refused, which also skipped the rest of the mod's startup, including the Gemini refresh while the Stats pane is open.
+
 ## 0.5.1 (2026-11-04)
 
 - Fixed a terminal window that flashed on screen about every 15 minutes on Windows. It came from the Antigravity CLI auto-updater, so the quota read now runs with that updater off. The CLI still updates itself when you use it directly.

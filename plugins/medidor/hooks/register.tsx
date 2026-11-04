@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, ModelUsage, Register } from 'claude-code'
 
-import type { Cota, Fatias, Limite, Medida } from '../types'
+import type { Cota, Fatias, Limite, Medida, UsoModelo } from '../types'
 
 const ZERO: Fatias = { lido: 0, escrito: 0, input: 0, output: 0 }
 
@@ -18,6 +18,10 @@ const piso = atom({ plugin: 'medidor', key: 'piso' } as const, null)
 const mensagens = atom({ plugin: 'medidor', key: 'mensagens' } as const, 0)
 const fechado = atom({ plugin: 'medidor', key: 'fechado' } as const, null)
 const cotas = atom({ plugin: 'medidor', key: 'cotas' } as const, [])
+const velocidade = atom({ plugin: 'medidor', key: 'velocidade' } as const, null)
+const porModelo = atom({ plugin: 'medidor', key: 'porModelo' } as const, {})
+const dobrados = atom({ plugin: 'medidor', key: 'dobrados' } as const, {})
+const pulso = atom({ plugin: 'medidor', key: 'pulso' } as const, 0)
 
 const LARANJA = '#D77757'
 const CLARO = '#EE9C78'
@@ -737,7 +741,7 @@ function tubo(f: Fatias, janela: number, W: number): string {
   const interno = `x="${x0}" y="${PAREDE}" width="${L}" height="${H - 2 * PAREDE}"`
   const casca = `x="${x0 - 3}" y="1.5" width="${L + 6}" height="${H - 3}"`
   return (
-    `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" style="--fim:${(fim - x0).toFixed(0)}px;--fora:${W + 90}px">${TUBO_CSS}` +
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" style="--fim:${(fim - x0).toFixed(0)}px;--fora:${W + 90}px">${TUBO_CSS}` +
     `<defs>${cores}` +
     `<clipPath id="dentro"><rect ${interno}/></clipPath>` +
     `<clipPath id="cheio"><rect x="${x0}" y="0" width="${Math.max(0, fim - x0 - 3).toFixed(1)}" height="${H}"/></clipPath>` +
@@ -767,6 +771,98 @@ const barrinha = (usado: number) =>
   `<svg xmlns="http://www.w3.org/2000/svg" width="${COTA_W}" height="${COTA_H}" viewBox="0 0 ${COTA_W} ${COTA_H}">` +
   `<rect width="${COTA_W}" height="${COTA_H}" rx="2.5" fill="${AZUL}" fill-opacity=".18"/>` +
   `<rect width="${(Math.min(1, Math.max(0, usado)) * COTA_W).toFixed(2)}" height="${COTA_H}" rx="2.5" fill="${AZUL}" fill-opacity=".9"/></svg>`
+
+// Os tubos verticais dos limites do Claude (5h e semana): uma gota cai do bico e o gel acumula no fundo.
+const VT_W = 44
+const VT_H = 51
+const COR_5H = '#D77757'
+const COR_SEMANA = '#F2C14E'
+
+function tuboVertical(rotulo: string, usado: number, base: string): string {
+  const pct = Math.max(0, Math.min(100, Math.round(usado)))
+  const cor = pct >= 80 ? VERMELHO : base
+  const xE = 16
+  const xD = 28
+  const cx = (xE + xD) / 2
+  const yT = 5
+  const yB = 33
+  const nivel = yB - (pct / 100) * (yB - yT)
+  const onda = (a: number) => `M${xE} ${(nivel + a).toFixed(1)}Q${xE + 3} ${(nivel + a - 1.4).toFixed(1)} ${cx} ${nivel.toFixed(1)}T${xD} ${(nivel - a).toFixed(1)}V${yB}H${xE}Z`
+  const gel =
+    pct > 0
+      ? `<path fill="url(#g)" d="${onda(0.7)}"><animate attributeName="d" dur="3s" repeatCount="indefinite" values="${onda(0.7)};${onda(-0.7)};${onda(0.7)}"/></path>`
+      : ''
+  // a gota nasce no bico, cai acelerando e, ao tocar o gel, abre uma ondinha na superfície
+  const gota =
+    pct < 100
+      ? `<ellipse cx="${cx}" cy="${yT + 1}" rx="1.3" ry="1.7" fill="${cor}">` +
+        `<animate attributeName="cy" dur="2.2s" repeatCount="indefinite" calcMode="spline" keyTimes="0;.35;.85;1" keySplines="0 0 1 1;.55 0 1 .6;0 0 1 1" values="${yT + 1};${yT + 1.6};${nivel.toFixed(1)};${nivel.toFixed(1)}"/>` +
+        `<animate attributeName="opacity" dur="2.2s" repeatCount="indefinite" keyTimes="0;.1;.85;.86;1" values="0;1;1;0;0"/></ellipse>` +
+        `<ellipse cx="${cx}" cy="${nivel.toFixed(1)}" rx="0" ry=".8" fill="none" stroke="${tom(cor, 0.5)}" stroke-width=".7">` +
+        `<animate attributeName="rx" dur="2.2s" repeatCount="indefinite" keyTimes="0;.85;1" values="0;0;5"/>` +
+        `<animate attributeName="opacity" dur="2.2s" repeatCount="indefinite" keyTimes="0;.85;.87;1" values="0;0;.9;0"/></ellipse>`
+      : ''
+  return (
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${VT_W}" height="${VT_H}" viewBox="0 0 ${VT_W} ${VT_H}">` +
+    `<defs><linearGradient id="g" x1="0" x2="1" y1="0" y2="0"><stop offset="0" stop-color="${tom(cor, 0.4)}"/><stop offset=".45" stop-color="${cor}"/><stop offset="1" stop-color="${tom(cor, -0.55)}"/></linearGradient>` +
+    `<linearGradient id="m" x1="0" x2="1" y1="0" y2="0"><stop offset="0" stop-color="#dfe5e8"/><stop offset=".5" stop-color="#8d979d"/><stop offset="1" stop-color="#4c5459"/></linearGradient>` +
+    `<linearGradient id="v" x1="0" x2="1" y1="0" y2="0"><stop offset="0" stop-color="#bcd8e6" stop-opacity=".16"/><stop offset=".55" stop-color="#0e1419" stop-opacity=".4"/><stop offset="1" stop-color="#bcd8e6" stop-opacity=".1"/></linearGradient>` +
+    `<clipPath id="d"><rect x="${xE}" y="${yT}" width="${xD - xE}" height="${yB - yT}"/></clipPath></defs>` +
+    `<rect x="${xE - 1.5}" y="${yT}" width="${xD - xE + 3}" height="${yB - yT}" fill="url(#v)"/>` +
+    `<g clip-path="url(#d)">${gel}${gota}</g>` +
+    `<path d="M${xE - 1.5} ${yT}V${yB}M${xD + 1.5} ${yT}V${yB}" stroke="#c4dbe6" stroke-opacity=".55" fill="none"/>` +
+    `<rect x="${xE + 1}" y="${yT}" width="1.6" height="${yB - yT}" fill="#fff" fill-opacity=".35"/>` +
+    `<rect x="${xE - 3}" y="0" width="${xD - xE + 6}" height="${yT}" rx="1" fill="url(#m)"/>` +
+    `<rect x="${cx - 1.5}" y="${yT}" width="3" height="1.4" fill="#4c5459"/>` +
+    `<rect x="${xE - 3}" y="${yB}" width="${xD - xE + 6}" height="${yT}" rx="1" fill="url(#m)"/>` +
+    `<text x="${VT_W / 2}" y="${VT_H - 1}" text-anchor="middle" font-size="11" font-family="system-ui,sans-serif" fill="#c8c8c2">${rotulo} ${pct}%</text></svg>`
+  )
+}
+
+// O painel Stats: uso por modelo nesta sessão e os jobs do Gemini.
+const PAINEL_STATS = 'stats'
+const LOGS_GEMINI = `${CASA}/.claude/medidor-gemini-logs`
+const MAX_LOGS = 300
+type UsoGemini = { jobs: number; ok: number; falhas: number; input: number; output: number; raciocinio: number; segundos: number }
+
+async function usoGemini($: EngineInterface): Promise<Record<string, UsoGemini>> {
+  const saida: Record<string, UsoGemini> = {}
+  let lista: { name: string; kind: string; mtimeMs: number }[] = []
+  try {
+    lista = (await $.fs.list(LOGS_GEMINI)) as typeof lista
+  } catch {
+    return saida
+  }
+  const recentes = lista
+    .filter(a => a.kind === 'file' && a.name.endsWith('.json'))
+    .sort((a, b) => b.mtimeMs - a.mtimeMs)
+    .slice(0, MAX_LOGS)
+  for (const a of recentes) {
+    try {
+      const j = JSON.parse((await $.fs.read(`${LOGS_GEMINI}/${a.name}`)) as string)
+      const u = (saida[j.model || 'unknown'] ??= { jobs: 0, ok: 0, falhas: 0, input: 0, output: 0, raciocinio: 0, segundos: 0 })
+      u.jobs += 1
+      if (j.status === 'SUCCESS') u.ok += 1
+      else u.falhas += 1
+      u.input += j.result?.usage?.input_tokens ?? 0
+      u.output += j.result?.usage?.output_tokens ?? 0
+      u.raciocinio += j.result?.usage?.thinking_tokens ?? 0
+      u.segundos += j.ended && j.started ? Math.round((j.ended - j.started) / 1000) : 0
+    } catch {
+      // log pela metade: a próxima leitura pega inteiro
+    }
+  }
+  return saida
+}
+
+async function alternarStats($: EngineInterface): Promise<boolean> {
+  if ((await $.ui.panes()).some(p => p.id === PAINEL_STATS)) {
+    await $.ui.close({ id: PAINEL_STATS })
+    return false
+  }
+  await $.ui.open({ id: PAINEL_STATS, title: 'Stats', columns: 46 })
+  return true
+}
 
 // `agy -p /usage` responde na hora, sem gastar tokens, com a cota real do plano Google.
 const AGY = `${CASA}/AppData/Local/agy/bin/agy.exe`
@@ -800,6 +896,19 @@ async function atualizarCotas($: EngineInterface) {
 async function somar($: EngineInterface, f: Fatias, modelo: string) {
   const v = valor(f, modelo)
   await update($, estimado, x => x + v)
+  await update($, porModelo, todos => {
+    const a: UsoModelo = todos[modelo] ?? { chamadas: 0, ...ZERO }
+    return {
+      ...todos,
+      [modelo]: {
+        chamadas: a.chamadas + 1,
+        lido: a.lido + f.lido,
+        escrito: a.escrito + f.escrito,
+        input: a.input + f.input,
+        output: a.output + f.output,
+      },
+    }
+  })
   await update($, totais, t => ({
     lido: t.lido + f.lido,
     escrito: t.escrito + f.escrito,
@@ -818,6 +927,8 @@ async function zerar($: EngineInterface) {
   await update($, piso, () => null)
   await update($, mensagens, () => 0)
   await update($, fechado, () => null)
+  await update($, velocidade, () => null)
+  await update($, porModelo, () => ({}))
 }
 
 async function limpar($: EngineInterface) {
@@ -933,11 +1044,22 @@ let ultimoBom: any = null
 export const register: Register = on => {
   const turnosContados = new Set<string>()
 
-  on('session.start', ($, e, next) => {
+  on('session.start', async ($, e, next) => {
     $.ui.status(undefined)
     void atualizarCotas($)
     $.clock.every(COTA_CADA_MS, () => void atualizarCotas($))
+    await $.command.register({ name: 'stats', description: 'Show or hide the usage stats pane' })
+    // Mantém os números do Gemini frescos enquanto o painel está aberto.
+    $.clock.every(4000, () => {
+      void $.ui.panes().then(l => {
+        if (l.some(p => p.id === PAINEL_STATS)) void update($, pulso, n => n + 1)
+      })
+    })
     return next(e)
+  })
+
+  on('command.run', { command: 'stats' }, async $ => {
+    return { text: (await alternarStats($)) ? 'Stats pane open.' : 'Stats pane closed.' }
   })
 
   on('session.end', async ($, e, next) => {
@@ -948,7 +1070,23 @@ export const register: Register = on => {
   })
 
   on('turn.step', async function* ($, e, next) {
-    const r = yield* next(e)
+    // Lê o fluxo à mão para cronometrar do primeiro pedaço ao último: tok/s sem a espera até o modelo começar a responder.
+    const fluxo = next(e)
+    let primeiro: number | null = null
+    let chegou = false
+    let r: Awaited<typeof fluxo.result>
+    try {
+      let passo = await fluxo.next()
+      while (!passo.done) {
+        primeiro ??= await $.clock.now()
+        yield passo.value
+        passo = await fluxo.next()
+      }
+      chegou = true
+      r = passo.value
+    } finally {
+      if (!chegou) await fluxo.return(undefined as never)
+    }
     if (r.usage) {
       const f = deUso(r.usage)
       turnosContados.add(e.turnId)
@@ -956,6 +1094,8 @@ export const register: Register = on => {
       if (!e.agentId) {
         await update($, fatias, () => f)
         await update($, piso, p => p ?? soma(f))
+        const seg = primeiro === null ? 0 : ((await $.clock.now()) - primeiro) / 1000
+        if (f.output >= 10 && seg >= 0.2) await update($, velocidade, () => Math.round(f.output / seg))
       }
     }
     return r
@@ -1011,7 +1151,7 @@ export const register: Register = on => {
 
     // Everything is read at once and next(e) is asked last: while Claude works the band redraws many times a second,
     // and a slow draw that asked next(e) first left the band without the meter whenever a newer redraw cut it short.
-    const [lidas, m, t, gasto, estimativa, usadas, lims, gerando, contente, agora, base, msgs, fechouEm, plano] = await Promise.all([
+    const [lidas, m, t, gasto, estimativa, usadas, lims, gerando, contente, agora, base, msgs, fechouEm, plano, tokSeg] = await Promise.all([
       read($, fatias),
       read($, medida),
       read($, totais),
@@ -1026,6 +1166,7 @@ export const register: Register = on => {
       read($, mensagens),
       read($, fechado),
       read($, cotas),
+      read($, velocidade),
     ])
 
     // Sempre visível: antes da primeira resposta (e depois do Clear) desenha o medidor inteiro zerado, com o mascote animado.
@@ -1054,6 +1195,7 @@ export const register: Register = on => {
 
     function desenhar() {
     const cincoHoras = lims.find(x => x.kind === 'five_hour')
+    const semana = lims.find(x => x.kind === 'seven_day')
     const modo: Modo = e.props.isWorking ? 'working' : contente ? 'happy' : 'idle'
     const janela = m?.janela ?? 200000
     const ocupadoCtx = soma(f)
@@ -1068,10 +1210,10 @@ export const register: Register = on => {
       extra > 0
         ? `Good time for a handoff: ${num(extra)} tokens of history, it pays for itself in ~${Math.max(1, Math.ceil(HANDOFF_CUSTO / (extra * 0.1)))} messages`
         : `Good time for a handoff: context at ${percent}%`
-    // Tubo em pixels: colunas da faixa × a largura da fonte, menos o mascote e o texto ao lado.
-    const tuboW = Math.max(220, Math.min(1400, Math.round((e.props.bodyColumns ?? 100) * 7.6) - COLUNAS * CEL - 120))
-    // Claude/GPT pelo plano Google só aparece depois de usado; os Gemini aparecem sempre.
-    const planoVisivel = plano.filter((c: Cota) => c.nome !== 'Claude/GPT' || c.usado >= 0.005)
+    // O desenho nasce um pouco mais largo que o espaço; sem `width`, o app o encolhe até a vaga e o tubo encosta no x%.
+    const tuboW = Math.max(220, Math.min(1400, Math.round((e.props.bodyColumns ?? 100) * 7.6)))
+    // Cada cota do plano Google só aparece depois de usada.
+    const planoVisivel = plano.filter((c: Cota) => c.usado >= 0.005)
     const listaSkills =
       usadas.length === 0
         ? 'none'
@@ -1106,13 +1248,8 @@ export const register: Register = on => {
       <Box flexDirection="column" flexGrow={1}>
         <Box flexDirection="row" gap={1} alignItems="center">
           {Svg ? (
-            <Box flexGrow={1} flexShrink={1}>
-              <Svg
-                source={tubo(f, janela, tuboW)}
-                alt={`Context ${percent}%`}
-                width={tuboW}
-                height={TUBO_H}
-              />
+            <Box key="tubo" flexGrow={1} flexShrink={1} minWidth={0}>
+              <Svg source={tubo(f, janela, tuboW)} alt={`Context ${percent}%`} height={TUBO_H} />
             </Box>
           ) : (
             <Box flexDirection="row" flexGrow={1} columnGap={0}>
@@ -1122,56 +1259,70 @@ export const register: Register = on => {
               <Box key="livre" flexGrow={escala(livre, janela)} minWidth={livre > 0 ? 1 : 0} height={1} backgroundColor={LIVRE} />
             </Box>
           )}
-          <Text color={corPct} bold>
-            {percent}%
-          </Text>
-          <Text dimColor>
-            {num(m?.tokens ?? ocupadoCtx)}/{num(janela)}
-          </Text>
-        </Box>
-        <Box flexDirection="row" justifyContent="space-between">
-          <Box flexDirection="row" flexWrap="wrap" columnGap={2}>
-            {TIPOS.map(x => (
-              <Text key={x.campo}>
-                <Text color={x.cor}>●</Text> <Text dimColor>{x.curto}</Text> <Text bold>{num(f[x.campo])}</Text>
-                <Text dimColor>/{num(t[x.campo])}</Text>
-              </Text>
-            ))}
-            {acerto(t) !== null && (
-              <Text>
-                <Text dimColor>hit</Text>{' '}
-                <Text bold color={corAcerto(acerto(f))}>
-                  {acerto(f) ?? 0}%
-                </Text>
-                <Text dimColor>/</Text>
-                <Text color={corAcerto(acerto(t))}>{acerto(t)}%</Text>
-              </Text>
-            )}
-            <Text bold>{gasto !== null ? usd(gasto) : `≈ ${usd(estimativa)}`}</Text>
-          </Box>
-          {cincoHoras && (
-            <Text color={corLimite} bold={corLimite !== undefined}>
-              5h {cincoHoras.percentUsed}%{falta(cincoHoras.resetsAt, agora)}
+          <Box key="contexto" flexDirection="row" columnGap={1} flexShrink={0}>
+            <Text color={corPct} bold>
+              {percent}%
             </Text>
-          )}
-        </Box>
-        <Box flexDirection="row" justifyContent="space-between" alignItems="center">
-          <Box flexDirection="row" flexWrap="wrap" columnGap={2} alignItems="center">
-            {planoVisivel.map(c => (
-              <Box key={`${c.nome}-${c.janela}`} flexDirection="row" columnGap={1} alignItems="center">
-                <Text color={AZUL} dimColor>
-                  {c.nome} {c.janela}
-                </Text>
-                {Svg && <Svg source={barrinha(c.usado)} alt={`${c.nome} ${c.janela} ${Math.round(c.usado * 100)}%`} width={COTA_W} height={COTA_H} />}
-                <Text color={AZUL} dimColor>
-                  {Math.round(c.usado * 100)}%
-                </Text>
-              </Box>
-            ))}
-            <Text dimColor wrap="truncate-end">Skills: {listaSkills}</Text>
+            <Text dimColor>
+              {num(m?.tokens ?? ocupadoCtx)}/{num(janela)}
+            </Text>
           </Box>
-          <Box flexDirection="row" columnGap={1}>
+        </Box>
+        <Box flexDirection="row" alignItems="center" columnGap={1}>
+          <Box flexDirection="column" flexGrow={1} flexShrink={1} minWidth={0}>
+            <Box flexDirection="row" flexWrap="wrap" columnGap={2}>
+              {TIPOS.map(x => (
+                <Text key={x.campo}>
+                  <Text color={x.cor}>●</Text> <Text dimColor>{x.curto}</Text> <Text bold>{num(f[x.campo])}</Text>
+                  <Text dimColor>/{num(t[x.campo])}</Text>
+                </Text>
+              ))}
+              {acerto(t) !== null && (
+                <Text>
+                  <Text dimColor>hit</Text>{' '}
+                  <Text bold color={corAcerto(acerto(f))}>
+                    {acerto(f) ?? 0}%
+                  </Text>
+                  <Text dimColor>/</Text>
+                  <Text color={corAcerto(acerto(t))}>{acerto(t)}%</Text>
+                </Text>
+              )}
+              <Text bold>{gasto !== null ? usd(gasto) : `≈ ${usd(estimativa)}`}</Text>
+              {tokSeg !== null && (
+                <Text key="tok-s">
+                  <Text bold>{tokSeg}</Text> <Text dimColor>tok/s</Text>
+                </Text>
+              )}
+              {cincoHoras && (
+                <Text color={corLimite} dimColor={corLimite === undefined} bold={corLimite !== undefined}>
+                  5h{falta(cincoHoras.resetsAt, agora)}
+                </Text>
+              )}
+            </Box>
+            <Box flexDirection="row" flexWrap="wrap" columnGap={2} alignItems="center">
+              {planoVisivel.map(c => (
+                <Box key={`${c.nome}-${c.janela}`} flexDirection="row" columnGap={1} alignItems="center">
+                  <Text color={AZUL} dimColor>
+                    {c.nome} {c.janela}
+                  </Text>
+                  {Svg && <Svg source={barrinha(c.usado)} alt={`${c.nome} ${c.janela} ${Math.round(c.usado * 100)}%`} width={COTA_W} height={COTA_H} />}
+                  <Text color={AZUL} dimColor>
+                    {Math.round(c.usado * 100)}%
+                  </Text>
+                </Box>
+              ))}
+              <Text dimColor wrap="truncate-end">Skills: {listaSkills}</Text>
+            </Box>
+          </Box>
+          {Svg && (cincoHoras || semana) && (
+            <Box key="tubos-limite" flexDirection="row" flexShrink={0} alignItems="center">
+              {cincoHoras && <Svg source={tuboVertical('5h', cincoHoras.percentUsed, COR_5H)} alt={`5 hour limit ${cincoHoras.percentUsed}%`} width={VT_W} height={VT_H} />}
+              {semana && <Svg source={tuboVertical('wk', semana.percentUsed, COR_SEMANA)} alt={`Weekly limit ${semana.percentUsed}%`} width={VT_W} height={VT_H} />}
+            </Box>
+          )}
+          <Box flexDirection="row" columnGap={1} flexShrink={0}>
             <Button key="mods" label="Mods" onPress={() => $.ui.open({ id: "mods", title: "Mods" })} />
+            <Button key="stats" label="Stats" onPress={() => void alternarStats($)} />
             <Button key="clear" label="Clear" onPress={() => limpar($)} />
             <Button
               key="handoff"
@@ -1186,5 +1337,60 @@ export const register: Register = on => {
       </Box>
     )
     }
+  })
+
+  on('ui.render', { component: 'Pane', requestId: PAINEL_STATS }, async ($, e) => {
+    const { Box, Text, Button } = $.ui.resolve(e)
+    await read($, pulso)
+    const [meus, gemini, dobra, lims, plano, tokSeg, agora] = await Promise.all([
+      read($, porModelo),
+      usoGemini($),
+      read($, dobrados),
+      read($, limites),
+      read($, cotas),
+      read($, velocidade),
+      $.clock.now(),
+    ])
+    const nome = (m: string) => m.replace(/^claude-/, '').replace(/-\d{8}$/, '')
+    const secao = (id: string, titulo: string, linhas: string[]) => {
+      const fechada = dobra[id] === true
+      return (
+        <Box key={id} flexDirection="column">
+          <Button key={`t:${id}`} label={`${fechada ? '▸' : '▾'} ${titulo}`} onPress={() => void update($, dobrados, d => ({ ...d, [id]: !d[id] }))} />
+          {!fechada && linhas.map((l, i) => <Text key={`${id}:${i}`} dimColor>{`  ${l}`}</Text>)}
+        </Box>
+      )
+    }
+    const claude = Object.entries(meus).sort((a, b) => b[1].chamadas - a[1].chamadas)
+    const jobs = Object.entries(gemini).sort((a, b) => b[1].jobs - a[1].jobs)
+    return (
+      <Box flexDirection="column">
+        <Text bold>Claude (this session)</Text>
+        {tokSeg !== null && <Text dimColor>  last response {tokSeg} tok/s</Text>}
+        {lims.map(l => (
+          <Text key={l.kind} dimColor>{`  ${l.kind === 'five_hour' ? '5h' : l.kind === 'seven_day' ? 'week' : l.kind} ${l.percentUsed}%${falta(l.resetsAt, agora)}`}</Text>
+        ))}
+        {claude.length === 0 && <Text dimColor>  no calls yet</Text>}
+        {claude.map(([m, u]) =>
+          secao(`c:${m}`, `${nome(m)}  ${u.chamadas}x  ${num(u.input + u.output)}`, [
+            `input  ${num(u.input)}`,
+            `output ${num(u.output)}`,
+            `cache read ${num(u.lido)}  written ${num(u.escrito)}`,
+          ]),
+        )}
+        <Text bold color={AZUL}>Gemini / agy (Google)</Text>
+        {plano.map(c => (
+          <Text key={`${c.nome}-${c.janela}`} dimColor>{`  ${c.nome} ${c.janela} ${Math.round(c.usado * 100)}%`}</Text>
+        ))}
+        {jobs.length === 0 && <Text dimColor>  no jobs yet</Text>}
+        {jobs.map(([m, u]) =>
+          secao(`g:${m}`, `${m}  ${u.jobs} jobs  ${num(u.input + u.output)}`, [
+            `ok ${u.ok}  failed ${u.falhas}`,
+            `input ${num(u.input)}  output ${num(u.output)}`,
+            `thinking ${num(u.raciocinio)}  time ${u.segundos}s`,
+          ]),
+        )}
+      </Box>
+    )
   })
 }

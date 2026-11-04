@@ -10,4 +10,4 @@ Faixa acima do prompt com barra de contexto (cache lido, cache escrito, input, o
 /plugin install medidor@claude-mods
 ```
 
-Os handoffs são salvos em `~/.claude/medidor-handoffs`. Os preços ficam na tabela `PRECOS` em `plugins/medidor/hooks/register.tsx`.
+O botão Stats (ou `/stats`) abre o uso por modelo; os jobs do Gemini vêm de logs JSON em `~/.claude/medidor-gemini-logs`. Os handoffs são salvos em `~/.claude/medidor-handoffs`. Os preços ficam na tabela `PRECOS` em `plugins/medidor/hooks/register.tsx`.

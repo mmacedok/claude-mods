@@ -90,3 +90,15 @@ test('the mascot shows on desktop in every mood, idle included', async ($, on) =
     await ui.unmount()
   }
 })
+
+test('stats button and limit tubes draw', async ($, on) => {
+  on('turn.complete', (_$, e: any) => ({ text: 'ok', usage: e.usage }))
+  on('session.measure', (_$, e: any) => ({ changed: e.changed }))
+  on('ui.render', ($$: any, e: any) => { const { Box } = $$.ui.resolve(e); return <Box key="engine" /> })
+  mock.clock(on)
+  await estado($)
+  const ui = await $.ui.mount({ plugin: 'medidor', surface: 'desktop', component: 'AbovePrompt', props: PROPS })
+  expect(await ui.find({ key: 'stats' })).toBeDefined()
+  expect(await ui.find({ key: 'tubos-limite' })).toBeDefined()
+  await ui.unmount()
+})

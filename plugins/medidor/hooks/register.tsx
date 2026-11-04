@@ -773,19 +773,32 @@ const barrinha = (usado: number) =>
   `<rect width="${(Math.min(1, Math.max(0, usado)) * COTA_W).toFixed(2)}" height="${COTA_H}" rx="2.5" fill="${AZUL}" fill-opacity=".9"/></svg>`
 
 // Os tubos verticais dos limites do Claude (5h e semana): uma gota cai do bico e o gel acumula no fundo.
-const VT_W = 44
-const VT_H = 51
-const COR_5H = '#D77757'
-const COR_SEMANA = '#F2C14E'
+const VT_W = 58
+const VT_H = 74
 
-function tuboVertical(rotulo: string, usado: number, base: string): string {
+// A cor do gel anda com o uso: verde vazio, passa pelo amarelo e pelo laranja e chega ao vermelho cheio.
+// Gira o matiz em vez de misturar RGB, que no meio do caminho daria um marrom apagado.
+function corDoUso(pct: number): string {
+  const t = Math.max(0, Math.min(100, pct)) / 100
+  const h = 125 - 125 * t
+  const sat = 0.9
+  const luz = 0.55
+  const canal = (n: number) => {
+    const k = (n + h / 30) % 12
+    const v = luz - sat * Math.min(luz, 1 - luz) * Math.max(-1, Math.min(k - 3, 9 - k, 1))
+    return Math.round(v * 255).toString(16).padStart(2, '0')
+  }
+  return `#${canal(0)}${canal(8)}${canal(4)}`
+}
+
+function tuboVertical(rotulo: string, usado: number): string {
   const pct = Math.max(0, Math.min(100, Math.round(usado)))
-  const cor = pct >= 80 ? VERMELHO : base
-  const xE = 16
-  const xD = 28
+  const cor = corDoUso(pct)
+  const xE = 18
+  const xD = 40
   const cx = (xE + xD) / 2
-  const yT = 5
-  const yB = 33
+  const yT = 6
+  const yB = 56
   const nivel = yB - (pct / 100) * (yB - yT)
   const onda = (a: number) => `M${xE} ${(nivel + a).toFixed(1)}Q${xE + 3} ${(nivel + a - 1.4).toFixed(1)} ${cx} ${nivel.toFixed(1)}T${xD} ${(nivel - a).toFixed(1)}V${yB}H${xE}Z`
   const gel =
@@ -795,27 +808,27 @@ function tuboVertical(rotulo: string, usado: number, base: string): string {
   // a gota nasce no bico, cai acelerando e, ao tocar o gel, abre uma ondinha na superfície
   const gota =
     pct < 100
-      ? `<ellipse cx="${cx}" cy="${yT + 1}" rx="1.3" ry="1.7" fill="${cor}">` +
+      ? `<ellipse cx="${cx}" cy="${yT + 1}" rx="2" ry="2.8" fill="${cor}">` +
         `<animate attributeName="cy" dur="2.2s" repeatCount="indefinite" calcMode="spline" keyTimes="0;.35;.85;1" keySplines="0 0 1 1;.55 0 1 .6;0 0 1 1" values="${yT + 1};${yT + 1.6};${nivel.toFixed(1)};${nivel.toFixed(1)}"/>` +
         `<animate attributeName="opacity" dur="2.2s" repeatCount="indefinite" keyTimes="0;.1;.85;.86;1" values="0;1;1;0;0"/></ellipse>` +
-        `<ellipse cx="${cx}" cy="${nivel.toFixed(1)}" rx="0" ry=".8" fill="none" stroke="${tom(cor, 0.5)}" stroke-width=".7">` +
-        `<animate attributeName="rx" dur="2.2s" repeatCount="indefinite" keyTimes="0;.85;1" values="0;0;5"/>` +
+        `<ellipse cx="${cx}" cy="${nivel.toFixed(1)}" rx="0" ry=".8" fill="none" stroke="${tom(cor, 0.5)}" stroke-width="1">` +
+        `<animate attributeName="rx" dur="2.2s" repeatCount="indefinite" keyTimes="0;.85;1" values="0;0;9"/>` +
         `<animate attributeName="opacity" dur="2.2s" repeatCount="indefinite" keyTimes="0;.85;.87;1" values="0;0;.9;0"/></ellipse>`
       : ''
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" width="${VT_W}" height="${VT_H}" viewBox="0 0 ${VT_W} ${VT_H}">` +
     `<defs><linearGradient id="g" x1="0" x2="1" y1="0" y2="0"><stop offset="0" stop-color="${tom(cor, 0.4)}"/><stop offset=".45" stop-color="${cor}"/><stop offset="1" stop-color="${tom(cor, -0.55)}"/></linearGradient>` +
     `<linearGradient id="m" x1="0" x2="1" y1="0" y2="0"><stop offset="0" stop-color="#dfe5e8"/><stop offset=".5" stop-color="#8d979d"/><stop offset="1" stop-color="#4c5459"/></linearGradient>` +
-    `<linearGradient id="v" x1="0" x2="1" y1="0" y2="0"><stop offset="0" stop-color="#bcd8e6" stop-opacity=".16"/><stop offset=".55" stop-color="#0e1419" stop-opacity=".4"/><stop offset="1" stop-color="#bcd8e6" stop-opacity=".1"/></linearGradient>` +
+    `<linearGradient id="v" x1="0" x2="1" y1="0" y2="0"><stop offset="0" stop-color="#d6ecf7" stop-opacity=".34"/><stop offset=".55" stop-color="#0e1419" stop-opacity=".4"/><stop offset="1" stop-color="#d6ecf7" stop-opacity=".24"/></linearGradient>` +
     `<clipPath id="d"><rect x="${xE}" y="${yT}" width="${xD - xE}" height="${yB - yT}"/></clipPath></defs>` +
     `<rect x="${xE - 1.5}" y="${yT}" width="${xD - xE + 3}" height="${yB - yT}" fill="url(#v)"/>` +
     `<g clip-path="url(#d)">${gel}${gota}</g>` +
-    `<path d="M${xE - 1.5} ${yT}V${yB}M${xD + 1.5} ${yT}V${yB}" stroke="#c4dbe6" stroke-opacity=".55" fill="none"/>` +
-    `<rect x="${xE + 1}" y="${yT}" width="1.6" height="${yB - yT}" fill="#fff" fill-opacity=".35"/>` +
+    `<path d="M${xE - 1.5} ${yT}V${yB}M${xD + 1.5} ${yT}V${yB}" stroke="#d6ecf7" stroke-opacity=".9" stroke-width="1.4" fill="none"/>` +
+    `<rect x="${xE + 1}" y="${yT}" width="2.4" height="${yB - yT}" fill="#fff" fill-opacity=".4"/>` +
     `<rect x="${xE - 3}" y="0" width="${xD - xE + 6}" height="${yT}" rx="1" fill="url(#m)"/>` +
     `<rect x="${cx - 1.5}" y="${yT}" width="3" height="1.4" fill="#4c5459"/>` +
-    `<rect x="${xE - 3}" y="${yB}" width="${xD - xE + 6}" height="${yT}" rx="1" fill="url(#m)"/>` +
-    `<text x="${VT_W / 2}" y="${VT_H - 1}" text-anchor="middle" font-size="11" font-family="system-ui,sans-serif" fill="#c8c8c2">${rotulo} ${pct}%</text></svg>`
+    `<rect x="${xE - 3}" y="${yB}" width="${xD - xE + 6}" height="${yT}" rx="1.5" fill="url(#m)"/>` +
+    `<text x="${VT_W / 2}" y="${VT_H - 1}" text-anchor="middle" font-size="13" font-weight="600" font-family="system-ui,sans-serif" fill="#ecece6">${rotulo} ${pct}%</text></svg>`
   )
 }
 
@@ -1316,8 +1329,8 @@ export const register: Register = on => {
           </Box>
           {Svg && (cincoHoras || semana) && (
             <Box key="tubos-limite" flexDirection="row" flexShrink={0} alignItems="center">
-              {cincoHoras && <Svg source={tuboVertical('5h', cincoHoras.percentUsed, COR_5H)} alt={`5 hour limit ${cincoHoras.percentUsed}%`} width={VT_W} height={VT_H} />}
-              {semana && <Svg source={tuboVertical('wk', semana.percentUsed, COR_SEMANA)} alt={`Weekly limit ${semana.percentUsed}%`} width={VT_W} height={VT_H} />}
+              {cincoHoras && <Svg source={tuboVertical('5h', cincoHoras.percentUsed)} alt={`5 hour limit ${cincoHoras.percentUsed}%`} width={VT_W} height={VT_H} />}
+              {semana && <Svg source={tuboVertical('wk', semana.percentUsed)} alt={`Weekly limit ${semana.percentUsed}%`} width={VT_W} height={VT_H} />}
             </Box>
           )}
           <Box flexDirection="row" columnGap={1} flexShrink={0}>

@@ -570,8 +570,13 @@ function desenharMascote(modo: Modo): string {
   )
 }
 
-const CASA = ((globalThis as any).process?.env?.USERPROFILE ?? (globalThis as any).process?.env?.HOME ?? '').split(String.fromCharCode(92)).join('/')
-const PASTA_HANDOFFS = `${CASA}/.claude/funmeter-handoffs`
+// A pasta do usuário vem de $.env: o módulo não tem Node, então process.env não existe aqui.
+let CASA = ''
+async function acharCasa($: EngineInterface) {
+  const pasta = (await $.env.get('USERPROFILE')) ?? (await $.env.get('HOME')) ?? ''
+  CASA = pasta.split(String.fromCharCode(92)).join('/')
+}
+const pastaHandoffs = () => `${CASA}/.claude/funmeter-handoffs`
 
 const PEDIDO_HANDOFF = `Write a HANDOFF of this conversation so that a fresh session, with no history, can continue the current work without losing anything important. Write it in the language the user writes in, direct, no introduction, at most ~400 words, in these sections:
 
@@ -900,7 +905,7 @@ function tuboVertical(rotulo: string, usado: number): string {
 
 // O painel Stats: uso por modelo nesta sessão e os jobs do Gemini.
 const PAINEL_STATS = 'stats'
-const LOGS_GEMINI = `${CASA}/.claude/funmeter-gemini-logs`
+const logsGemini = () => `${CASA}/.claude/funmeter-gemini-logs`
 const MAX_LOGS = 300
 type UsoGemini = { jobs: number; ok: number; falhas: number; input: number; output: number; raciocinio: number; segundos: number }
 
@@ -908,7 +913,7 @@ async function usoGemini($: EngineInterface): Promise<Record<string, UsoGemini>>
   const saida: Record<string, UsoGemini> = {}
   let lista: { name: string; kind: string; mtimeMs: number }[] = []
   try {
-    lista = (await $.fs.list(LOGS_GEMINI)) as typeof lista
+    lista = (await $.fs.list(logsGemini())) as typeof lista
   } catch {
     return saida
   }
@@ -918,7 +923,7 @@ async function usoGemini($: EngineInterface): Promise<Record<string, UsoGemini>>
     .slice(0, MAX_LOGS)
   for (const a of recentes) {
     try {
-      const j = JSON.parse((await $.fs.read(`${LOGS_GEMINI}/${a.name}`)) as string)
+      const j = JSON.parse((await $.fs.read(`${logsGemini()}/${a.name}`)) as string)
       const u = (saida[j.model || 'unknown'] ??= { jobs: 0, ok: 0, falhas: 0, input: 0, output: 0, raciocinio: 0, segundos: 0 })
       u.jobs += 1
       if (j.status === 'SUCCESS') u.ok += 1
@@ -944,8 +949,10 @@ async function alternarStats($: EngineInterface): Promise<boolean> {
 }
 
 // `agy -p /usage` responde na hora, sem gastar tokens, com a cota real do plano Google.
-const AGY = `${CASA}/AppData/Local/agy/bin/agy.exe`
+const agy = () => `${CASA}/AppData/Local/agy/bin/agy.exe`
 const COTA_CADA_MS = 120000
+const COTA_OLHA_MS = 30000
+const cotasArq = () => `${CASA}/.claude/funmeter-cotas.json`
 const NOMES_COTA: Record<string, string> = { 'Gemini Models': 'Gemini', 'Gemini 4 Argon': 'Argon', 'Claude and GPT models': 'Claude/GPT' }
 
 function lerCotas(saida: string): Cota[] {
@@ -960,11 +967,27 @@ function lerCotas(saida: string): Cota[] {
   return lista
 }
 
+// As sessões abertas dividem uma leitura só, guardada em COTAS_ARQ. O agy roda sem o atualizador:
+// a cada 15 min ele abria uma janela de terminal visível (agy --bg-updater). Só 'true' desliga; '1' não.
 async function atualizarCotas($: EngineInterface) {
+  let salvo: { em: number; lista: Cota[] } | null = null
   try {
-    const r = await $.process.run([AGY, '-p', '/usage', '--output-format', 'json'], { timeoutMs: 30000 })
+    salvo = JSON.parse(String(await $.fs.read(cotasArq())))
+  } catch {
+    // ainda não existe, ou outra sessão estava gravando
+  }
+  if (salvo?.lista?.length) {
+    const lista = salvo.lista
+    await update($, cotas, () => lista)
+  }
+  if (salvo && Date.now() - salvo.em < COTA_CADA_MS) return
+  try {
+    // Reserva a vez antes de rodar, para as outras sessões não lerem junto.
+    await $.fs.write(cotasArq(), JSON.stringify({ em: Date.now(), lista: salvo?.lista ?? [] }))
+    const r = await $.process.run([agy(), '-p', '/usage', '--output-format', 'json'], { timeoutMs: 30000, env: { AGY_CLI_DISABLE_AUTO_UPDATE: 'true' } })
     if (r.exitCode === 0) {
       const lista = lerCotas(r.stdout)
+      await $.fs.write(cotasArq(), JSON.stringify({ em: Date.now(), lista }))
       await update($, cotas, () => lista)
     }
   } catch {
@@ -1016,11 +1039,11 @@ async function limpar($: EngineInterface) {
   await zerar($)
 }
 
-const PASTA_SESSOES = `${CASA}/.claude/projects`
+const pastaSessoes = () => `${CASA}/.claude/projects`
 
 async function arquivoDa($: EngineInterface, id: string): Promise<string> {
   const slug = (await $.session.cwd()).replace(/[^A-Za-z0-9]/g, '-')
-  return `${PASTA_SESSOES}/${slug}/${id}.jsonl`
+  return `${pastaSessoes()}/${slug}/${id}.jsonl`
 }
 
 async function tituloDa($: EngineInterface, id: string): Promise<string | null> {
@@ -1045,7 +1068,7 @@ async function handoff($: EngineInterface) {
     await somar($, deUso(r.usage), await $.session.model())
 
     const id = await $.session.id()
-    const caminho = `${PASTA_HANDOFFS}/handoff-${id}-${await $.clock.now()}.md`
+    const caminho = `${pastaHandoffs()}/handoff-${id}-${await $.clock.now()}.md`
     let salvo = true
     try {
       await $.fs.write(caminho, r.text)
@@ -1125,8 +1148,9 @@ export const register: Register = on => {
 
   on('session.start', async ($, e, next) => {
     $.ui.status(undefined)
+    await acharCasa($)
     void atualizarCotas($)
-    $.clock.every(COTA_CADA_MS, () => void atualizarCotas($))
+    $.clock.every(COTA_OLHA_MS, () => void atualizarCotas($))
     await $.command.register({ name: 'stats', description: 'Show or hide the usage stats pane' })
     // Mantém os números do Gemini frescos enquanto o painel está aberto.
     $.clock.every(4000, () => {

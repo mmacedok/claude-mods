@@ -1,5 +1,11 @@
 # FunMeter changelog
 
+## 0.5.1 (2026-11-04)
+
+- Fixed a terminal window that flashed on screen about every 15 minutes on Windows. It came from the Antigravity CLI auto-updater, so the quota read now runs with that updater off. The CLI still updates itself when you use it directly.
+- Open sessions now share one quota read, saved in `~/.claude/funmeter-cotas.json`, instead of each running its own.
+- Fixed the home folder lookup. In 0.5.0 it came back empty, so the Gemini quota, Handoff files and Gemini job logs pointed to the wrong folders.
+
 ## 0.5.0 (2026-11-04)
 
 - Renamed from `medidor` to FunMeter. The plugin is now `funmeter@claude-mods`, so uninstall `medidor@claude-mods` before installing it.

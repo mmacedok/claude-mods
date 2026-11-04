@@ -102,3 +102,31 @@ test('stats button and limit tubes draw', async ($, on) => {
   expect(await ui.find({ key: 'tubos-limite' })).toBeDefined()
   await ui.unmount()
 })
+
+test('sessions share one quota read and agy runs without its updater', async ($, on) => {
+  let arquivo: string | undefined
+  const rodou: any[] = []
+  mock.clock(on)
+  on('session.start', async () => ({ cwd: 'C:/x' }) as any)
+  on('ui.status', async () => ({ value: undefined }) as any)
+  on('command.register', async () => ({ value: undefined }) as any)
+  on('env.get', async () => ({ value: 'C:\\Users\\teste' }) as any)
+  on('fs.read', async () => ({ value: arquivo }) as any)
+  on('fs.write', async (_, e) => {
+    arquivo = e.text
+    return { value: undefined } as any
+  })
+  on('process.run', async (_, e) => {
+    rodou.push(e)
+    return { value: { exitCode: 0, stdout: '{"command":{"data":{"groups":[{"name":"Gemini Models","buckets":[{"window":"5h","remaining_fraction":0.5}]}]}}}', stderr: '' } } as any
+  })
+  const inicio = { cwd: 'C:/x', source: 'startup' } as any
+  await $.session.start(inicio)
+  await new Promise(r => setTimeout(r, 30))
+  expect(rodou.length).toBe(1)
+  expect(rodou[0].init.env.AGY_CLI_DISABLE_AUTO_UPDATE).toBe('true')
+  expect(JSON.parse(arquivo as string).lista.length).toBe(1)
+  await $.session.start(inicio)
+  await new Promise(r => setTimeout(r, 30))
+  expect(rodou.length).toBe(1)
+})

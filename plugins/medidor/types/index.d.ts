@@ -1,6 +1,7 @@
 export type Fatias = { lido: number; escrito: number; input: number; output: number }
 export type Medida = { tokens: number; janela: number; percent: number }
 export type Limite = { kind: string; percentUsed: number; resetsAt?: string }
+export type Cota = { nome: string; janela: string; usado: number }
 
 declare module 'claude-code' {
   interface PluginState {
@@ -17,6 +18,7 @@ declare module 'claude-code' {
       piso: number | null
       mensagens: number
       fechado: number | null
+      cotas: Cota[]
     }
   }
 }

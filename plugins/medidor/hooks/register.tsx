@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, ModelUsage, Register } from 'claude-code'
 
-import type { Fatias, Limite, Medida } from '../types'
+import type { Cota, Fatias, Limite, Medida } from '../types'
 
 const ZERO: Fatias = { lido: 0, escrito: 0, input: 0, output: 0 }
 
@@ -17,6 +17,7 @@ const feliz = atom({ plugin: 'medidor', key: 'feliz' } as const, false)
 const piso = atom({ plugin: 'medidor', key: 'piso' } as const, null)
 const mensagens = atom({ plugin: 'medidor', key: 'mensagens' } as const, 0)
 const fechado = atom({ plugin: 'medidor', key: 'fechado' } as const, null)
+const cotas = atom({ plugin: 'medidor', key: 'cotas' } as const, [])
 
 const LARANJA = '#D77757'
 const CLARO = '#EE9C78'
@@ -185,13 +186,18 @@ function janelas(total: number, inicios: number[], dur: number, dentro: number, 
   return `<animate attributeName="opacity" calcMode="discrete" values="${vals.join(';')}" keyTimes="${keys.join(';')}" dur="${total}s" repeatCount="indefinite"/>`
 }
 
+// Um path por cor em cada quadro (em vez de um rect por bloco): o SVG do idle tem de caber nos 131072 caracteres
+// que o engine aceita num Svg, senão a faixa inteira some enquanto o Claude está parado.
 function quadroIdle(s: string) {
-  return s
-    .split(' ')
-    .map(r => {
-      const [x, y, w, h, c] = r.split(',')
+  const porCor = new Map<string, string>()
+  for (const r of s.split(' ')) {
+    const [x, y, w, h, c] = r.split(',')
+    porCor.set(c, (porCor.get(c) ?? '') + `M${x} ${y}h${w}v${h}h-${w}z`)
+  }
+  return [...porCor]
+    .map(([c, d]) => {
       const [cor, op] = IDLE_CORES[+c].split('|')
-      return `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${cor}"${op ? ` opacity="${op}"` : ''}/>`
+      return `<path fill="${cor}"${op ? ` opacity="${op}"` : ''} d="${d}"/>`
     })
     .join('')
 }
@@ -208,6 +214,8 @@ function idlesQuadros(total: number) {
 // idle: ciclo de 63 s. Até 24 s: olhar em volta, acenar, cabo, pulo, dancinha.
 // De 26 a 48 s: laptop com código atrás, bola de disco com dança, e buraco no chão.
 // De 49 a 63 s: sapateado, gelatina e espirro (quadro a quadro), com pausas entre eles. Respiração e piscadas o tempo todo.
+// o maior SVG que o engine aceita; passou disso, a árvore inteira é recusada e a faixa some
+const SVG_MAX = 131072
 const cacheMascote = new Map<Modo, string>()
 function mascote(modo: Modo): string {
   let svg = cacheMascote.get(modo)
@@ -595,10 +603,11 @@ const valor = (f: Fatias, modelo: string) => {
 
 // Cheapest to most expensive per token: cache read (0.1x input), input, cache write (2x), output (5x).
 const TIPOS = [
-  { campo: 'lido', nome: 'cache read', cor: '#639922' },
-  { campo: 'input', nome: 'input', cor: '#D4B83A' },
-  { campo: 'escrito', nome: 'cache write', cor: '#EF9F27' },
-  { campo: 'output', nome: 'output', cor: '#E24B4A' },
+  // géis do Portal 2 (o azul fica reservado para o Gemini): laranja propulsão, branco conversão, verde e roxo
+  { campo: 'lido', curto: 'CR', cor: '#FF8A1E' },
+  { campo: 'input', curto: 'I', cor: '#6ECB3C' },
+  { campo: 'escrito', curto: 'CW', cor: '#E9EEF0' },
+  { campo: 'output', curto: 'O', cor: '#B45CFF' },
 ] as const
 
 const LIVRE = '#5F5E5A'
@@ -638,80 +647,154 @@ const falta = (resetsAt: string | undefined, agora: number) => {
   return ` · resets in ${Math.floor(min / 60)}h ${String(min % 60).padStart(2, '0')}m`
 }
 
-// Barra de contexto no estilo do plan-progress: trilho cinza arredondado e, até o fim do preenchimento, pontinhos de 2 px
-// numa grade de 3 px (7 linhas), mais densos e mais coloridos perto da ponta, na cor do tipo de token, piscando em 4 ritmos.
-const BARRA_W = 505
-const BARRA_H = 22
-// a barra inteira vale metade da janela: o contexto quase nunca passa de 50%, então cada pedaço fica com o dobro do espaço
-const ZOOM = 0.5
-const CINZA = [132, 130, 138]
-const rgbDe = (h: string) => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16))
-const misturar = (a: number[], b: number[], m: number) => a.map((v, i) => Math.round(v + ((b[i] ?? 0) - v) * m))
-const sorteio = (a: number, b: number, k: number) => {
-  const x = Math.sin(a * 127.1 + b * 311.7 + k * 74.7) * 43758.5453
-  return x - Math.floor(x)
-}
-const PISCA =
-  '<style>.t0,.t1,.t2,.t3{animation:tw 2.2s ease-in-out infinite}.t1{animation-duration:2.8s;animation-delay:-.7s}' +
-  '.t2{animation-duration:1.9s;animation-delay:-1.3s}.t3{animation-duration:3.3s;animation-delay:-.4s}' +
-  '@keyframes tw{0%,100%{opacity:1}50%{opacity:.45}}@media (prefers-reduced-motion:reduce){.t0,.t1,.t2,.t3{animation:none}}</style>'
+// Tubo de gel do Portal 2, feito em código: vidro horizontal contínuo que enche da esquerda para a direita.
+// A escala é real: o tubo inteiro é 100% da janela de contexto e cada gel ocupa exatamente a sua fração, sem largura mínima.
+const TUBO_H = 24
+const TAMPA = 8 // anel de metal em cada ponta
+const PAREDE = 3 // espessura do vidro
 
-// cada tipo presente ganha um mínimo de largura, para dar para distinguir mesmo quando o cache read domina; os pedaços
-// ficam colados e o degradê (ralo no começo, denso na ponta) corre pela barra inteira, cada pontinho na cor do seu tipo
-const MIN_PEDACO = 36
-
-function barraBlocos(f: Fatias, janela: number): string {
-  let acum = 0
-  const pedacos = TIPOS.filter(x => f[x.campo] > 0).map(x => {
-    const w = Math.max(MIN_PEDACO, (f[x.campo] / (janela * ZOOM)) * BARRA_W)
-    const p = { cor: x.cor, a: acum, b: acum + w }
-    acum += w
-    return p
-  })
-  const fim = Math.max(3, Math.min(BARRA_W, acum))
-
-  // os pontinhos de um mesmo visual (tipo, tom, ritmo) vão num só path
-  const pontos = new Map<string, { d: string; x: number; y: number }>()
-  for (let col = 0; col * 3 < fim; col++) {
-    const x = col * 3
-    const tipo = Math.max(0, pedacos.findIndex(p => x + 1 < p.b))
-    const u = Math.min(1, (x + 1.5) / fim)
-    const denso = 0.4 + 0.6 * Math.pow(u, 1.3)
-    const tom = Math.min(4, Math.floor(u * 4.99))
-    for (let r = 0; r < 7; r++) {
-      if (sorteio(col, r, 1) > denso + 0.1) continue
-      const chave = `${tipo}-${tom}-${Math.floor(sorteio(col, r, 2) * 4)}`
-      const y = 1 + r * 3
-      const ant = pontos.get(chave)
-      pontos.set(chave, { d: ant ? `${ant.d}m${x - ant.x} ${y - ant.y}h2v2h-2z` : `M${x} ${y}h2v2h-2z`, x, y })
-    }
+const tom = (h: string, m: number) => {
+  const alvo = m >= 0 ? 255 : 0
+  const canal = (i: number) => {
+    const v = parseInt(h.slice(i, i + 2), 16)
+    return Math.round(v + (alvo - v) * Math.abs(m))
+      .toString(16)
+      .padStart(2, '0')
   }
-  const px = [...pontos]
-    .map(([chave, v]) => {
-      const [tipo, tom, ritmo] = chave.split('-').map(Number)
-      const m = tom / 4
-      const base = rgbDe(pedacos[tipo]?.cor ?? '#888888')
-      const cor = misturar(misturar(CINZA, base, 0.6 + 0.4 * m), [255, 255, 255], 0.2 * m)
-      const op = 0.55 + 0.45 * m
-      return `<path class="t${ritmo}" fill="rgb(${cor.join(',')})" fill-opacity="${op.toFixed(2)}" d="${v.d}"/>`
+  return `#${canal(1)}${canal(3)}${canal(5)}`
+}
+
+const TUBO_CSS =
+  '<style>.gl{animation:gl 8s ease-in-out infinite}.br{animation:br 5s ease-in-out infinite alternate}' +
+  '.bo{animation:bo 9s linear infinite}' +
+  '@keyframes gl{0%{transform:translateX(-90px)}45%,100%{transform:translateX(var(--fora))}}' +
+  '@keyframes br{from{transform:translateX(-9px)}to{transform:translateX(9px)}}' +
+  '@keyframes bo{from{transform:translateX(0)}to{transform:translateX(var(--fim))}}' +
+  '@media (prefers-reduced-motion:reduce){.gl,.br,.bo{animation:none}}</style>'
+
+function tubo(f: Fatias, janela: number, W: number): string {
+  const H = TUBO_H
+  const x0 = TAMPA
+  const L = W - 2 * TAMPA
+  let acum = 0
+  const pedacos = TIPOS.map(x => {
+    const a = acum
+    acum = Math.min(L, acum + (f[x.campo] / janela) * L)
+    return { cor: x.cor, id: x.campo, b: x0 + acum, largura: acum - a }
+  }).filter(p => p.largura >= 0.5)
+  const fim = x0 + acum
+
+  // superfície irregular do gel: a mesma para todos os pedaços, para eles encaixarem
+  const topo = (x: number, t: number) => PAREDE + 2.1 + 1.7 * Math.sin(x / 15 + t) + 0.8 * Math.sin(x / 6.1 + t * 2)
+  const baixo = (x: number, t: number) => H - PAREDE - 1.1 - 0.9 * Math.sin(x / 19 + t)
+  const contorno = (b: number, t: number, bojo: number) => {
+    let d = `M${x0 - 1} ${topo(x0, t).toFixed(1)}`
+    for (let x = x0 + 6; x < b; x += 6) d += `L${x} ${topo(x, t).toFixed(1)}`
+    d += `L${b.toFixed(1)} ${topo(b, t).toFixed(1)}Q${(b + bojo).toFixed(1)} ${(H / 2).toFixed(1)} ${b.toFixed(1)} ${baixo(b, t).toFixed(1)}`
+    for (let x = Math.floor((b - 1) / 12) * 12; x > x0; x -= 12) d += `L${x} ${baixo(x, t).toFixed(1)}`
+    return `${d}L${x0 - 1} ${baixo(x0, t).toFixed(1)}Z`
+  }
+
+  // do último para o primeiro: cada gel fica por cima do seguinte e a divisa entre eles é a curva do gel.
+  // A superfície segue a mesma fase em todos; só o bojo da ponta muda, para os quadros terem sempre os mesmos pontos.
+  const fases = [0, 2.1, 4.2, 0]
+  const bojos = [11, 15, 8, 11]
+  const geis = [...pedacos]
+    .reverse()
+    .map((p, i) => {
+      const quadros = fases.map((t, q) => contorno(p.b, t, bojos[q] ?? 11))
+      return `<path fill="url(#c-${p.id})" d="${quadros[0]}"><animate attributeName="d" dur="${6 + i}s" repeatCount="indefinite" values="${quadros.join(';')}"/></path>`
     })
     .join('')
-  const gradientes = pedacos
+
+  const cores = pedacos
     .map(
-      (p, i) =>
-        `<linearGradient id="g${i}" x1="0" x2="${fim.toFixed(1)}" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="${p.cor}" stop-opacity=".08"/><stop offset="1" stop-color="${p.cor}" stop-opacity=".35"/></linearGradient>`,
+      p =>
+        `<linearGradient id="c-${p.id}" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="${tom(p.cor, 0.45)}"/>` +
+        `<stop offset=".38" stop-color="${p.cor}"/><stop offset=".72" stop-color="${tom(p.cor, -0.22)}"/><stop offset="1" stop-color="${tom(p.cor, -0.62)}"/></linearGradient>`,
     )
     .join('')
-  const bases = pedacos
-    .map((p, i) => `<rect x="${p.a.toFixed(1)}" width="${Math.max(0, Math.min(p.b, fim) - p.a).toFixed(1)}" height="${BARRA_H}" fill="url(#g${i})"/>`)
-    .join('')
+
+  // brilhos molhados e bolhas dentro do gel
+  const brilhos: string[] = []
+  for (let x = x0 + 8, i = 0; x < fim - 4; x += 15 + ((i * 13) % 17), i++) {
+    brilhos.push(`<ellipse cx="${x}" cy="${(9.5 + (i % 3) * 0.9).toFixed(1)}" rx="${4 + (i % 4) * 1.5}" ry="${(1.4 + (i % 2) * 0.7).toFixed(1)}" fill="#fff" fill-opacity="${(0.62 + (i % 3) * 0.14).toFixed(2)}"/>`)
+    if (i % 2 === 0) brilhos.push(`<circle cx="${x + 7}" cy="${(13.5 + (i % 3)).toFixed(1)}" r="1.1" fill="#fff" fill-opacity=".55"/>`)
+  }
+  // uma gotinha solta logo à frente do gel, como a do tubo de referência
+  const ultimo = pedacos[pedacos.length - 1]
+  const gota = ultimo && fim + 20 < x0 + L
+    ? `<circle cx="${(fim + 17).toFixed(1)}" cy="13" r="2.4" fill="url(#c-${ultimo.id})"><animate attributeName="cx" dur="4s" repeatCount="indefinite" values="${(fim + 15).toFixed(1)};${(fim + 20).toFixed(1)};${(fim + 15).toFixed(1)}"/><animate attributeName="cy" dur="3s" repeatCount="indefinite" values="13;14.5;13"/></circle>`
+    : ''
+  const bolhas =
+    fim - x0 < 40
+      ? ''
+      : [0, 1, 2, 3, 4]
+          .map(i => `<circle class="bo" style="animation-delay:-${(i * 1.9).toFixed(1)}s" cx="${x0}" cy="${8 + ((i * 5) % 9)}" r="${(0.8 + (i % 3) * 0.4).toFixed(1)}" fill="#fff" fill-opacity=".38"/>`)
+          .join('')
+
+  // o vidro é reto e entra nos anéis de metal: um tubo contínuo, sem ponta arredondada
+  const interno = `x="${x0}" y="${PAREDE}" width="${L}" height="${H - 2 * PAREDE}"`
+  const casca = `x="${x0 - 3}" y="1.5" width="${L + 6}" height="${H - 3}"`
   return (
-    `<svg xmlns="http://www.w3.org/2000/svg" width="${BARRA_W}" height="${BARRA_H}" viewBox="0 0 ${BARRA_W} ${BARRA_H}">${PISCA}` +
-    `<defs><clipPath id="pl"><rect width="${BARRA_W}" height="${BARRA_H}" rx="${BARRA_H / 2}"/></clipPath>` +
-    `<clipPath id="fl"><rect width="${fim.toFixed(1)}" height="${BARRA_H}"/></clipPath>${gradientes}</defs>` +
-    `<g clip-path="url(#pl)"><rect width="${BARRA_W}" height="${BARRA_H}" fill="#808080" fill-opacity=".16"/>` +
-    `<g clip-path="url(#fl)">${bases}${px}</g></g></svg>`
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" style="--fim:${(fim - x0).toFixed(0)}px;--fora:${W + 90}px">${TUBO_CSS}` +
+    `<defs>${cores}` +
+    `<clipPath id="dentro"><rect ${interno}/></clipPath>` +
+    `<clipPath id="cheio"><rect x="${x0}" y="0" width="${Math.max(0, fim - x0 - 3).toFixed(1)}" height="${H}"/></clipPath>` +
+    `<linearGradient id="metal" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#dfe5e8"/><stop offset=".5" stop-color="#8d979d"/><stop offset="1" stop-color="#4c5459"/></linearGradient>` +
+    `<filter id="macio" x="-5%" y="-100%" width="110%" height="300%"><feGaussianBlur stdDeviation=".7"/></filter>` +
+    `<linearGradient id="vidro" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#bcd8e6" stop-opacity=".1"/><stop offset=".55" stop-color="#0e1419" stop-opacity=".35"/><stop offset="1" stop-color="#bcd8e6" stop-opacity=".07"/></linearGradient>` +
+    `<linearGradient id="reflexo" x1="0" x2="1"><stop offset="0" stop-color="#fff" stop-opacity=".62"/><stop offset=".6" stop-color="#fff" stop-opacity=".28"/><stop offset="1" stop-color="#fff" stop-opacity=".5"/></linearGradient>` +
+    `<linearGradient id="clarao" x1="0" x2="1"><stop offset="0" stop-color="#fff" stop-opacity="0"/><stop offset=".5" stop-color="#fff" stop-opacity=".55"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>` +
+    `</defs>` +
+    `<rect ${casca} fill="url(#vidro)"/>` +
+    `<g clip-path="url(#dentro)">${gota}${geis}<g clip-path="url(#cheio)"><g class="br">${brilhos.join('')}</g>${bolhas}</g></g>` +
+    `<path d="M${x0 - 3} 1.5H${x0 + L + 3}M${x0 - 3} ${H - 1.5}H${x0 + L + 3}" fill="none" stroke="#c4dbe6" stroke-opacity=".55"/>` +
+    `<rect x="${x0}" y="3" width="${L}" height="3" fill="url(#reflexo)" filter="url(#macio)"/>` +
+    `<rect x="${x0}" y="${H - 4.2}" width="${L}" height="1.2" fill="#fff" fill-opacity=".14" filter="url(#macio)"/>` +
+    `<g clip-path="url(#dentro)"><path class="gl" d="M0 ${H}L16 0h34L34 ${H}z" fill="url(#clarao)"/></g>` +
+    `<rect width="${TAMPA}" height="${H}" rx="1.5" fill="url(#metal)"/><rect x="${TAMPA - 1.5}" width="1.5" height="${H}" fill="#2b3135" fill-opacity=".7"/>` +
+    `<rect x="${W - TAMPA}" width="${TAMPA}" height="${H}" rx="1.5" fill="url(#metal)"/><rect x="${W - TAMPA}" width="1.5" height="${H}" fill="#2b3135" fill-opacity=".7"/>` +
+    `</svg>`
   )
+}
+
+// A barrinha discreta da cota do Gemini: só o trilho azul que enche conforme o plano é consumido.
+const AZUL = '#4FA8FF'
+const COTA_W = 42
+const COTA_H = 5
+const barrinha = (usado: number) =>
+  `<svg xmlns="http://www.w3.org/2000/svg" width="${COTA_W}" height="${COTA_H}" viewBox="0 0 ${COTA_W} ${COTA_H}">` +
+  `<rect width="${COTA_W}" height="${COTA_H}" rx="2.5" fill="${AZUL}" fill-opacity=".18"/>` +
+  `<rect width="${(Math.min(1, Math.max(0, usado)) * COTA_W).toFixed(2)}" height="${COTA_H}" rx="2.5" fill="${AZUL}" fill-opacity=".9"/></svg>`
+
+// `agy -p /usage` responde na hora, sem gastar tokens, com a cota real do plano Google.
+const AGY = `${CASA}/AppData/Local/agy/bin/agy.exe`
+const COTA_CADA_MS = 120000
+const NOMES_COTA: Record<string, string> = { 'Gemini Models': 'Gemini', 'Gemini 4 Argon': 'Argon', 'Claude and GPT models': 'Claude/GPT' }
+
+function lerCotas(saida: string): Cota[] {
+  const json = JSON.parse(saida.slice(saida.indexOf('{')))
+  const lista: Cota[] = []
+  for (const g of json.command?.data?.groups ?? []) {
+    for (const b of g.buckets ?? []) {
+      if (typeof b.remaining_fraction !== 'number') continue
+      lista.push({ nome: NOMES_COTA[g.name] ?? g.name, janela: b.window === 'weekly' ? 'wk' : String(b.window), usado: 1 - b.remaining_fraction })
+    }
+  }
+  return lista
+}
+
+async function atualizarCotas($: EngineInterface) {
+  try {
+    const r = await $.process.run([AGY, '-p', '/usage', '--output-format', 'json'], { timeoutMs: 30000 })
+    if (r.exitCode === 0) {
+      const lista = lerCotas(r.stdout)
+      await update($, cotas, () => lista)
+    }
+  } catch {
+    // sem agy ou sem rede: fica a última leitura
+  }
 }
 
 async function somar($: EngineInterface, f: Fatias, modelo: string) {
@@ -845,11 +928,15 @@ async function fecharAviso($: EngineInterface) {
   await update($, fechado, () => n)
 }
 
+let ultimoBom: any = null
+
 export const register: Register = on => {
   const turnosContados = new Set<string>()
 
   on('session.start', ($, e, next) => {
     $.ui.status(undefined)
+    void atualizarCotas($)
+    $.clock.every(COTA_CADA_MS, () => void atualizarCotas($))
     return next(e)
   })
 
@@ -918,39 +1005,62 @@ export const register: Register = on => {
       return next(e)
     }
 
-    const acima = await next(e)
     const ui = $.ui.resolve(e)
     const { Box, Button, Text } = ui
     const Svg = 'Svg' in ui ? ui.Svg : undefined
-    const f = await read($, fatias)
-    if (f === null) {
-      return (
+
+    // Everything is read at once and next(e) is asked last: while Claude works the band redraws many times a second,
+    // and a slow draw that asked next(e) first left the band without the meter whenever a newer redraw cut it short.
+    const [lidas, m, t, gasto, estimativa, usadas, lims, gerando, contente, agora, base, msgs, fechouEm, plano] = await Promise.all([
+      read($, fatias),
+      read($, medida),
+      read($, totais),
+      read($, custo),
+      read($, estimado),
+      read($, skills),
+      read($, limites),
+      read($, ocupado),
+      read($, feliz),
+      $.clock.now(),
+      read($, piso),
+      read($, mensagens),
+      read($, fechado),
+      read($, cotas),
+    ])
+
+    // Sempre visível: antes da primeira resposta (e depois do Clear) desenha o medidor inteiro zerado, com o mascote animado.
+    const f = lidas ?? ZERO
+
+    let meu: any
+    try {
+      meu = desenhar()
+      ultimoBom = meu
+    } catch (erro) {
+      // a draw that throws makes the engine show the band without the meter: show the last good one and why
+      meu = (
         <Box flexDirection="column">
-          {acima}
-          <Text dimColor>Context meter: waiting for the first response…</Text>
+          {ultimoBom}
+          <Text dimColor>Context meter error: {String(erro).slice(0, 160)}</Text>
         </Box>
       )
     }
+    const acima = await next(e)
+    return (
+      <Box flexDirection="column">
+        {acima}
+        {meu}
+      </Box>
+    )
 
-    const m = await read($, medida)
-    const t = await read($, totais)
-    const gasto = await read($, custo)
-    const estimativa = await read($, estimado)
-    const usadas = await read($, skills)
-    const cincoHoras = (await read($, limites)).find(x => x.kind === 'five_hour')
-    const gerando = await read($, ocupado)
-    const contente = await read($, feliz)
+    function desenhar() {
+    const cincoHoras = lims.find(x => x.kind === 'five_hour')
     const modo: Modo = e.props.isWorking ? 'working' : contente ? 'happy' : 'idle'
-    const agora = await $.clock.now()
     const janela = m?.janela ?? 200000
     const ocupadoCtx = soma(f)
     const livre = Math.max(janela - ocupadoCtx, 0)
     const percent = m?.percent ?? Math.round((ocupadoCtx / janela) * 100)
     const corPct = percent >= 85 ? '#E24B4A' : undefined
     const corLimite = cincoHoras && cincoHoras.percentUsed >= 80 ? '#E24B4A' : undefined
-    const base = await read($, piso)
-    const msgs = await read($, mensagens)
-    const fechouEm = await read($, fechado)
     const extra = ocupadoCtx - (base ?? ocupadoCtx)
     const vale = FORCAR_LARANJA || valeHandoff(ocupadoCtx, base, msgs, percent)
     const aviso = vale && (fechouEm === null || msgs - fechouEm >= REAPARECE_MSGS)
@@ -958,6 +1068,10 @@ export const register: Register = on => {
       extra > 0
         ? `Good time for a handoff: ${num(extra)} tokens of history, it pays for itself in ~${Math.max(1, Math.ceil(HANDOFF_CUSTO / (extra * 0.1)))} messages`
         : `Good time for a handoff: context at ${percent}%`
+    // Tubo em pixels: colunas da faixa × a largura da fonte, menos o mascote e o texto ao lado.
+    const tuboW = Math.max(220, Math.min(1400, Math.round((e.props.bodyColumns ?? 100) * 7.6) - COLUNAS * CEL - 120))
+    // Claude/GPT pelo plano Google só aparece depois de usado; os Gemini aparecem sempre.
+    const planoVisivel = plano.filter((c: Cota) => c.nome !== 'Claude/GPT' || c.usado >= 0.005)
     const listaSkills =
       usadas.length === 0
         ? 'none'
@@ -966,7 +1080,6 @@ export const register: Register = on => {
 
     return (
       <Box flexDirection="column">
-      {acima}
       {aviso && (
         <Box
           key="aviso-handoff"
@@ -985,20 +1098,20 @@ export const register: Register = on => {
         </Box>
       )}
       <Box flexDirection="row" gap={1} alignItems="center">
-        {Svg && (
-          <Box flexShrink={0}>
+        {Svg && mascote(modo).length <= SVG_MAX && (
+          <Box key="mascote" flexShrink={0}>
             <Svg source={mascote(modo)} alt="Claude mascot" width={COLUNAS * CEL} height={LINHAS * CEL} />
           </Box>
         )}
       <Box flexDirection="column" flexGrow={1}>
-        <Box flexDirection="row" gap={1}>
+        <Box flexDirection="row" gap={1} alignItems="center">
           {Svg ? (
             <Box flexGrow={1} flexShrink={1}>
               <Svg
-                source={barraBlocos(f, janela)}
+                source={tubo(f, janela, tuboW)}
                 alt={`Context ${percent}%`}
-                width={BARRA_W}
-                height={BARRA_H}
+                width={tuboW}
+                height={TUBO_H}
               />
             </Box>
           ) : (
@@ -1013,52 +1126,48 @@ export const register: Register = on => {
             {percent}%
           </Text>
           <Text dimColor>
-            {num(m?.tokens ?? ocupadoCtx)} / {num(janela)} context
+            {num(m?.tokens ?? ocupadoCtx)}/{num(janela)}
           </Text>
         </Box>
         <Box flexDirection="row" justifyContent="space-between">
           <Box flexDirection="row" flexWrap="wrap" columnGap={2}>
-            <Text dimColor>Last request</Text>
             {TIPOS.map(x => (
               <Text key={x.campo}>
-                <Text color={x.cor}>■</Text> {x.nome} <Text bold>{num(f[x.campo])}</Text>
+                <Text color={x.cor}>●</Text> <Text dimColor>{x.curto}</Text> <Text bold>{num(f[x.campo])}</Text>
+                <Text dimColor>/{num(t[x.campo])}</Text>
               </Text>
             ))}
-            {acerto(f) !== null && (
-              <Text>
-                hit{' '}
-                <Text bold color={corAcerto(acerto(f))}>
-                  {acerto(f)}%
-                </Text>
-              </Text>
-            )}
-          </Box>
-          {cincoHoras && (
-            <Text color={corLimite} bold={corLimite !== undefined}>
-              5-hour limit {cincoHoras.percentUsed}%{falta(cincoHoras.resetsAt, agora)}
-            </Text>
-          )}
-        </Box>
-        <Box flexDirection="row" justifyContent="space-between">
-          <Box flexDirection="row" flexWrap="wrap" columnGap={2}>
-            <Text dimColor>Session</Text>
-            {TIPOS.map(x => (
-              <Text key={x.campo}>
-                <Text color={x.cor}>■</Text> {num(t[x.campo])}
-              </Text>
-            ))}
-            <Text>
-              total <Text bold>{num(soma(t))}</Text>
-            </Text>
             {acerto(t) !== null && (
               <Text>
-                hit{' '}
-                <Text bold color={corAcerto(acerto(t))}>
-                  {acerto(t)}%
+                <Text dimColor>hit</Text>{' '}
+                <Text bold color={corAcerto(acerto(f))}>
+                  {acerto(f) ?? 0}%
                 </Text>
+                <Text dimColor>/</Text>
+                <Text color={corAcerto(acerto(t))}>{acerto(t)}%</Text>
               </Text>
             )}
             <Text bold>{gasto !== null ? usd(gasto) : `≈ ${usd(estimativa)}`}</Text>
+          </Box>
+          {cincoHoras && (
+            <Text color={corLimite} bold={corLimite !== undefined}>
+              5h {cincoHoras.percentUsed}%{falta(cincoHoras.resetsAt, agora)}
+            </Text>
+          )}
+        </Box>
+        <Box flexDirection="row" justifyContent="space-between" alignItems="center">
+          <Box flexDirection="row" flexWrap="wrap" columnGap={2} alignItems="center">
+            {planoVisivel.map(c => (
+              <Box key={`${c.nome}-${c.janela}`} flexDirection="row" columnGap={1} alignItems="center">
+                <Text color={AZUL} dimColor>
+                  {c.nome} {c.janela}
+                </Text>
+                {Svg && <Svg source={barrinha(c.usado)} alt={`${c.nome} ${c.janela} ${Math.round(c.usado * 100)}%`} width={COTA_W} height={COTA_H} />}
+                <Text color={AZUL} dimColor>
+                  {Math.round(c.usado * 100)}%
+                </Text>
+              </Box>
+            ))}
             <Text dimColor wrap="truncate-end">Skills: {listaSkills}</Text>
           </Box>
           <Box flexDirection="row" columnGap={1}>
@@ -1076,5 +1185,6 @@ export const register: Register = on => {
       </Box>
       </Box>
     )
+    }
   })
 }

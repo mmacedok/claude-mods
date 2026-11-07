@@ -1,5 +1,9 @@
 # FunMeter changelog
 
+## 0.5.11 (2026-11-07)
+
+- New `24h` battery: it starts each 24 hours full and drains as you use your share of the weekly limit, the share that makes the week last until it resets. Past the share the number goes negative and the empty battery blinks red. Stats shows the detail in points of the week.
+
 ## 0.5.10 (2026-11-07)
 
 - Handoff now really deletes the old session. The delete command was malformed, so old sessions were piling up. The file is deleted permanently, not moved to the Recycle Bin.

@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, ModelUsage, Register } from 'claude-code'
 
-import type { Cota, Fatias, Limite, Medida, UsoModelo } from '../types'
+import type { Cota, CotaDia, Fatias, Limite, Medida, UsoModelo } from '../types'
 
 const ZERO: Fatias = { lido: 0, escrito: 0, input: 0, output: 0 }
 
@@ -17,6 +17,7 @@ const feliz = atom({ plugin: 'funmeter', key: 'feliz' } as const, false)
 const piso = atom({ plugin: 'funmeter', key: 'piso' } as const, null)
 const mensagens = atom({ plugin: 'funmeter', key: 'mensagens' } as const, 0)
 const fechado = atom({ plugin: 'funmeter', key: 'fechado' } as const, null)
+const hoje = atom({ plugin: 'funmeter', key: 'hoje' } as const, null)
 const cotas = atom({ plugin: 'funmeter', key: 'cotas' } as const, [])
 const velocidade = atom({ plugin: 'funmeter', key: 'velocidade' } as const, null)
 const porModelo = atom({ plugin: 'funmeter', key: 'porModelo' } as const, {})
@@ -687,6 +688,32 @@ const falta = (resetsAt: string | undefined, agora: number) => {
   return ` · resets in ${Math.floor(min / 60)}h ${String(min % 60).padStart(2, '0')}m`
 }
 
+// Cota de 24h do limite semanal: a semana é cortada em blocos de 24h contados para trás a partir do reinício.
+// A cota de um bloco é fixada quando ele começa (o que sobra dividido pelos dias que faltam), para não encolher conforme se gasta.
+const DIA_MS = 86400000
+const ARREDONDA_CHAVE_MS = 300000 // o horário de reinício oscila alguns ms entre leituras
+const novaCotaDia = (pct: number, resetsAt: string | undefined, agora: number, antes: CotaDia | null): CotaDia | null => {
+  const alvo = resetsAt ? Date.parse(resetsAt) : NaN
+  if (!Number.isFinite(alvo) || alvo <= agora) return antes
+  const resta = alvo - agora
+  const chave = Math.round((alvo - Math.floor(resta / DIA_MS) * DIA_MS) / ARREDONDA_CHAVE_MS)
+  if (antes && antes.chave === chave && antes.inicio <= pct) return antes
+  // no último dia (menos de 24h) a cota é tudo o que sobra
+  return { chave, inicio: pct, cota: Math.max(100 - pct, 0) / Math.max(1, resta / DIA_MS) }
+}
+
+// Fica em $.store porque o bloco de 24h atravessa sessões: uma sessão nova não pode recomeçar a conta do dia do zero.
+async function medirHoje($: any, semanal: Limite) {
+  const agora = await $.clock.now()
+  const atual = await read($, hoje)
+  const nova = novaCotaDia(semanal.percentUsed, semanal.resetsAt, agora, atual)
+  if (nova === atual) return
+  const salva = ((await $.store.get('hoje')) ?? null) as CotaDia | null
+  const final = novaCotaDia(semanal.percentUsed, semanal.resetsAt, agora, salva)
+  if (final !== salva) await $.store.set('hoje', final)
+  await update($, hoje, () => final)
+}
+
 // Tubo de gel do Portal 2, feito em código: vidro horizontal contínuo que enche da esquerda para a direita.
 // A escala é real: o tubo inteiro é 100% da janela de contexto e cada gel ocupa exatamente a sua fração, sem largura mínima.
 const TUBO_H = 32
@@ -1023,6 +1050,48 @@ function tuboVertical(rotulo: string, usado: number): string {
     `<rect x="${cx - 1.5}" y="${yT}" width="3" height="1.4" fill="#4c5459"/>` +
     `<rect x="${xE - 3}" y="${yB}" width="${xD - xE + 6}" height="${yT}" rx="1.5" fill="url(#m)"/>` +
     `<text x="${VT_W / 2}" y="${VT_H - 1}" text-anchor="middle" font-size="13" font-weight="600" font-family="system-ui,sans-serif" fill="#ecece6">${rotulo} ${pct}%</text></svg>`
+  )
+}
+
+// A bateria do dia: começa cheia em cada bloco de 24h e descarrega conforme se gasta a cota.
+// O número é o que resta e fica negativo depois da cota; a carga para em zero e o contorno pisca em vermelho quando está no fim.
+const BATERIA_FRACA = 15
+function bateria(rotulo: string, restante: number): string {
+  const numero = Math.round(Number.isFinite(restante) ? restante : 0) || 0
+  const carga = Math.max(0, Math.min(100, numero))
+  const cor = corDoUso(100 - carga)
+  const xE = 18
+  const xD = 40
+  const cx = (xE + xD) / 2
+  const yT = 9
+  const yB = 58
+  const nivel = yB - (carga / 100) * (yB - yT)
+  const onda = (a: number) => `M${xE} ${(nivel + a).toFixed(1)}Q${xE + 3} ${(nivel + a - 1.4).toFixed(1)} ${cx} ${nivel.toFixed(1)}T${xD} ${(nivel - a).toFixed(1)}V${yB}H${xE}Z`
+  const gel =
+    carga > 0
+      ? `<path fill="url(#g)" d="${onda(0.7)}"><animate attributeName="d" dur="3s" repeatCount="indefinite" values="${onda(0.7)};${onda(-0.7)};${onda(0.7)}"/></path>`
+      : ''
+  const marcas = [0.25, 0.5, 0.75]
+    .map(f => yB - f * (yB - yT))
+    .map(y => `<path d="M${xE} ${y}H${xD}" stroke="#0e1419" stroke-opacity=".45" stroke-width="1"/>`)
+    .join('')
+  const raio =
+    carga > 0
+      ? `<path d="M${cx + 2} ${yT + 13}L${cx - 5} ${yT + 27}H${cx - 0.5}L${cx - 2} ${yT + 37}L${cx + 5} ${yT + 22}H${cx + 0.5}Z" fill="#fff"><animate attributeName="opacity" dur="3s" repeatCount="indefinite" values=".5;.95;.5"/></path>`
+      : ''
+  const fraca = carga <= BATERIA_FRACA
+  const pisca = fraca ? '<animate attributeName="stroke-opacity" dur="1.2s" repeatCount="indefinite" values="1;.25;1"/>' : ''
+  return (
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${VT_W}" height="${VT_H}" viewBox="0 0 ${VT_W} ${VT_H}">` +
+    `<defs><linearGradient id="g" x1="0" x2="1" y1="0" y2="0"><stop offset="0" stop-color="${tom(cor, 0.4)}"/><stop offset=".45" stop-color="${cor}"/><stop offset="1" stop-color="${tom(cor, -0.55)}"/></linearGradient>` +
+    `<linearGradient id="m" x1="0" x2="1" y1="0" y2="0"><stop offset="0" stop-color="#dfe5e8"/><stop offset=".5" stop-color="#8d979d"/><stop offset="1" stop-color="#4c5459"/></linearGradient>` +
+    `<clipPath id="d"><rect x="${xE}" y="${yT}" width="${xD - xE}" height="${yB - yT}" rx="2"/></clipPath></defs>` +
+    `<rect x="${cx - 5}" y="2" width="10" height="${yT - 3}" rx="1.5" fill="url(#m)"/>` +
+    `<rect x="${xE}" y="${yT}" width="${xD - xE}" height="${yB - yT}" rx="2" fill="#0e1419" fill-opacity=".45"/>` +
+    `<g clip-path="url(#d)">${gel}${marcas}<rect x="${xE + 1}" y="${yT}" width="2.4" height="${yB - yT}" fill="#fff" fill-opacity=".35"/></g>` +
+    raio +
+    `<rect x="${xE - 1.5}" y="${yT - 1.5}" width="${xD - xE + 3}" height="${yB - yT + 3}" rx="3.5" fill="none" stroke="${fraca ? '#E24B4A' : '#d6ecf7'}" stroke-width="1.6">${pisca}</rect>` +
+    `<text x="${VT_W / 2}" y="${VT_H - 1}" text-anchor="middle" font-size="13" font-weight="600" font-family="system-ui,sans-serif" fill="#ecece6">${rotulo} ${numero}%</text></svg>`
   )
 }
 
@@ -1477,6 +1546,8 @@ export const register: Register = on => {
     }
     const l: Limite[] = e.rateLimits.map(x => ({ kind: x.kind, percentUsed: x.percentUsed, resetsAt: x.resetsAt }))
     await update($, limites, () => l)
+    const semanal = l.find(x => x.kind === 'seven_day')
+    if (semanal) await medirHoje($, semanal)
     return next(e)
   })
 
@@ -1496,7 +1567,7 @@ export const register: Register = on => {
 
     // Everything is read at once and next(e) is asked last: while Claude works the band redraws many times a second,
     // and a slow draw that asked next(e) first left the band without the meter whenever a newer redraw cut it short.
-    const [lidas, m, t, gasto, estimativa, usadas, lims, gerando, contente, agora, base, msgs, fechouEm, plano, tokSeg, respondeuEm, estaParado, paradoFechou, sid] = await Promise.all([
+    const [lidas, m, t, gasto, estimativa, usadas, lims, cotaHoje, gerando, contente, agora, base, msgs, fechouEm, plano, tokSeg, respondeuEm, estaParado, paradoFechou, sid] = await Promise.all([
       read($, fatias),
       read($, medida),
       read($, totais),
@@ -1504,6 +1575,7 @@ export const register: Register = on => {
       read($, estimado),
       read($, skills),
       read($, limites),
+      read($, hoje),
       read($, ocupado),
       read($, feliz),
       $.clock.now(),
@@ -1553,6 +1625,8 @@ export const register: Register = on => {
     const livre = Math.max(janela - ocupadoCtx, 0)
     const percent = m?.percent ?? Math.round((ocupadoCtx / janela) * 100)
     const corPct = percent >= 85 ? '#E24B4A' : undefined
+    const gastoHoje = semana && cotaHoje ? Math.max(semana.percentUsed - cotaHoje.inicio, 0) : null
+    const pctHoje = gastoHoje === null || !cotaHoje ? null : cotaHoje.cota > 0 ? (gastoHoje / cotaHoje.cota) * 100 : 100
     const corLimite = cincoHoras && cincoHoras.percentUsed >= 80 ? '#E24B4A' : undefined
     const extra = ctx - (base ?? ctx)
     const vale = FORCAR_LARANJA || valeHandoff(ctx, base, msgs, percent)
@@ -1670,6 +1744,7 @@ export const register: Register = on => {
           {Svg && (cincoHoras || semana) && (
             <Box key="tubos-limite" flexDirection="row" flexShrink={0} alignItems="center" alignSelf="flex-end">
               {cincoHoras && <Svg source={comFase(`${sid}:5h`, tuboVertical('5h', cincoHoras.percentUsed), agora)} alt={`5 hour limit ${cincoHoras.percentUsed}%`} width={VT_W} height={VT_H} />}
+              {pctHoje !== null && <Svg source={comFase(`${sid}:24h`, bateria('24h', 100 - pctHoje), agora)} alt={`Today's share of the weekly limit: ${Math.round(100 - pctHoje)}% left`} width={VT_W} height={VT_H} />}
               {semana && <Svg source={comFase(`${sid}:wk`, tuboVertical('wk', semana.percentUsed), agora)} alt={`Weekly limit ${semana.percentUsed}%`} width={VT_W} height={VT_H} />}
             </Box>
           )}
@@ -1695,11 +1770,12 @@ export const register: Register = on => {
   on('ui.render', { component: 'Pane', requestId: PAINEL_STATS }, async ($, e) => {
     const { Box, Text, Button } = $.ui.resolve(e)
     await read($, pulso)
-    const [meus, gemini, dobra, lims, plano, tokSeg, agora] = await Promise.all([
+    const [meus, gemini, dobra, lims, cotaHoje, plano, tokSeg, agora] = await Promise.all([
       read($, porModelo),
       usoGemini($),
       read($, dobrados),
       read($, limites),
+      read($, hoje),
       read($, cotas),
       read($, velocidade),
       $.clock.now(),
@@ -1723,6 +1799,13 @@ export const register: Register = on => {
         {lims.map(l => (
           <Text key={l.kind} dimColor>{`  ${l.kind === 'five_hour' ? '5h' : l.kind === 'seven_day' ? 'week' : l.kind} ${l.percentUsed}%${falta(l.resetsAt, agora)}`}</Text>
         ))}
+        {(() => {
+          const s = lims.find(x => x.kind === 'seven_day')
+          const alvo = s?.resetsAt ? Date.parse(s.resetsAt) : NaN
+          if (!s || !cotaHoje || !Number.isFinite(alvo) || alvo <= agora) return null
+          const dias = ((alvo - agora) / DIA_MS).toFixed(1)
+          return <Text key="cota-dia-stats" dimColor>{`  today ${Math.max(s.percentUsed - cotaHoje.inicio, 0)}% of ${Math.floor(cotaHoje.cota)}% · ${100 - s.percentUsed}% of the week left over ${dias} days`}</Text>
+        })()}
         {claude.length === 0 && <Text dimColor>  no calls yet</Text>}
         {claude.map(([m, u]) =>
           secao(`c:${m}`, `${nome(m)}  ${u.chamadas}x  ${num(u.input + u.output)}`, [

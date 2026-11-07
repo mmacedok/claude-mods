@@ -1,6 +1,7 @@
 export type Fatias = { lido: number; escrito: number; input: number; output: number }
 export type Medida = { tokens: number; janela: number; percent: number }
 export type Limite = { kind: string; percentUsed: number; resetsAt?: string }
+export type CotaDia = { chave: number; inicio: number; cota: number }
 export type Cota = { nome: string; janela: string; usado: number }
 export type UsoModelo = Fatias & { chamadas: number }
 
@@ -14,6 +15,7 @@ declare module 'claude-code' {
       custo: number | null
       estimado: number
       limites: Limite[]
+      hoje: CotaDia | null
       ocupado: boolean
       feliz: boolean
       piso: number | null

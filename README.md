@@ -64,7 +64,9 @@ The context percentage turns red from 85%.
 
 ### Limit tubes
 
-Two vertical tubes show the 5-hour limit (`5h`) and the weekly limit (`wk`). A drop falls from the top and gel builds up at the bottom, going from green to red as you use more.
+Two vertical tubes show the 5-hour limit (`5h`) and the weekly limit (`wk`), with a battery for today (`24h`) between them. A drop falls from the top and gel builds up at the bottom, going from green to red as you use more.
+
+The `24h` battery starts full and drains as you spend today's share of the week: what is left of the week divided by the days until it resets. The days are counted back from the reset, and each share is set when that day starts, so spending less today raises tomorrow's. Past the share the number goes negative.
 
 ![Limit tubes from green to red](docs/funmeter/limits.gif)
 

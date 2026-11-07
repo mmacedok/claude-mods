@@ -1,5 +1,9 @@
 # FunMeter changelog
 
+## 0.5.7 (2026-11-06)
+
+- Bubbles are easier to see: larger minimum size and a stronger outline. A very small share now gets a bubble bigger than its true area, so it still shows.
+
 ## 0.5.6 (2026-11-06)
 
 - New warning when the last reply was 1 hour or more ago: the cache has expired, so the next message writes the whole context again. It also works on a resumed session, and it goes away with ✕ or the next reply.

@@ -742,7 +742,7 @@ const GOTAS_ATE = 0.12
 const GOTA_MARGEM = 9 // as gotas entram e saem fora da parte visível, onde o salto do loop não aparece
 const MISTURA_TOPO = 7.6 // abaixo da superfície mais funda do gel
 const MISTURA_BASE = 27 // acima do fundo mais alto do gel
-const GOTA_MIN = 1.6 // só para a gota continuar visível quando a parte é mínima
+const GOTA_MIN = 3.4 // o tubo costuma aparecer encolhido: abaixo disso a gota some, mesmo que a área real fosse menor
 const GOTAS_MAX = 16 // por tipo: com três tipos o desenho ainda cabe no limite de tamanho do SVG; a área se mantém com gotas maiores
 const GOTA_QUADROS = 20
 const sorteio = (i: number) => {
@@ -756,7 +756,7 @@ function gotasDaMistura(x0: number, xFim: number, parte: number, id: string, ord
   const meio = (MISTURA_BASE + MISTURA_TOPO) / 2
   const percurso = w + 2 * GOTA_MARGEM
   const alvo = parte * percurso * h // o percurso inclui as margens escondidas, então a parte visível fica com a densidade certa
-  const rMedio = 3 + 7 * Math.min(parte, GOTAS_ATE)
+  const rMedio = 4 + 7 * Math.min(parte, GOTAS_ATE)
   const n = Math.max(1, Math.min(GOTAS_MAX, Math.round(alvo / (Math.PI * rMedio * rMedio))))
   const pesos = Array.from({ length: n }, (_, i) => 1 + 0.3 * (2 * sorteio(i) - 1))
   const k = alvo / (Math.PI * pesos.reduce((t, p) => t + p, 0))
@@ -793,7 +793,7 @@ function gotasDaMistura(x0: number, xFim: number, parte: number, id: string, ord
         `<g><animateTransform attributeName="transform" type="translate" dur="${periodo}s" repeatCount="indefinite" keyTimes="${chaves}" values="${valores}"/>` +
         // um pouco esticada no sentido do fluxo
         `<g transform="scale(1.2 .85)">` +
-        blob(0, 0, r, sem, 11 + (i % 5), `fill="url(#gota-${id})" stroke="${tom(corBase, -0.45)}" stroke-opacity=".7" stroke-width=".7"`, 4) +
+        blob(0, 0, r, sem, 11 + (i % 5), `fill="url(#gota-${id})" stroke="${tom(corBase, -0.7)}" stroke-opacity=".9" stroke-width="1"`, 4) +
         `</g></g>`
       )
     })

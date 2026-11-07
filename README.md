@@ -45,15 +45,7 @@ From the start of the tube to the dotted mark is 100% of the context window, at 
 
 While cache write, input or output is under 12% of cache read, it shows as bubbles of its color flowing through the orange gel, with a total area that matches its share. From 12% up it is its own layer, to the right of the orange.
 
-A layer can still be too thin to see, and with no cache read there is no gel to hold bubbles. In those cases the type also gets a blob in the free part of the tube:
-
-![Three states of the tube](docs/funmeter/tube-cases.gif)
-
-- **Size:** grows with the token count on a log scale, up to 50k. It shows the order of magnitude; the exact number is in the legend.
-- **Merging:** when a type's slice of gel reaches 20 px wide, its blob joins the gel and disappears.
-- **Reserved space:** the right end of the tube is kept free, so blobs never sit on the gel, even at 100% context. They never touch each other either.
-
-![A blob growing until it becomes gel](docs/funmeter/blob-to-gel.gif)
+The whole tube is 100% of the context window, at true scale. A layer too thin to see, or a type with no cache read to flow in, shows only in the legend.
 
 ### Numbers
 
@@ -129,8 +121,6 @@ Everything is in [`plugins/funmeter/hooks/register.tsx`](plugins/funmeter/hooks/
 | Constant | What it changes |
 |---|---|
 | `PRECOS` | Prices used for the cost estimate |
-| `ESFERA_FUNDE` | Width, in px, at which a blob joins the gel |
-| `BLOB_RESERVA` | Size of the space reserved for blobs |
 | `HANDOFF_PCT`, `HANDOFF_PAGA`, `HANDOFF_MIN_MSGS` | When the Handoff warning appears |
 
 ## What's new

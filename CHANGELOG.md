@@ -1,5 +1,25 @@
 # FunMeter changelog
 
+## 0.5.10 (2026-11-07)
+
+- Handoff now really deletes the old session. The delete command was malformed, so old sessions were piling up. The file is deleted permanently, not moved to the Recycle Bin.
+- The old session is kept if the summary could not be saved, and the toast now says what actually happened, checked against the file itself.
+
+## 0.5.9 (2026-11-06)
+
+- Animations: the mascot's idle blinks and dance steps now play at their real timing (rounded key times were swallowing almost half of them), and a happy sparkle with an invalid key time is fixed.
+- Bubbles in the gel no longer pop in and out at the ends of the tube, whatever their size. The small white bubbles travel a fixed path, so they no longer jump when tokens grow.
+- The expired-cache warning and the Handoff button now work on a resumed session before the first message. `/resume` inside a running process no longer keeps the previous conversation's numbers.
+- Handoff keeps the session title on sessions over 4 MiB, on Windows.
+- Cost estimate: added the missing models, including Haiku 5.5, which was being priced 40x too high. The longest matching model id now wins.
+- A context window of 0 or an invalid value no longer breaks the tube. Number formatting no longer shows `1000k`, and an invalid reset time no longer shows `NaNh`.
+- The tube is only redrawn when its numbers change, the stats pane no longer rereads logs that have not changed, and caches are kept per session with a size limit.
+
+## 0.5.8 (2026-11-06)
+
+- Removed the blobs after the gel, along with the space reserved for them and the dotted 100% mark. The whole tube is now 100% of the context window.
+- Bubbles inside the gel no longer have a dark outline.
+
 ## 0.5.7 (2026-11-06)
 
 - Bubbles are easier to see: larger minimum size and a stronger outline. A very small share now gets a bubble bigger than its true area, so it still shows.

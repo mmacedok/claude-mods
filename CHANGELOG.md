@@ -1,5 +1,21 @@
 # FunMeter changelog
 
+## 0.5.6 (2026-11-06)
+
+- New warning when the last reply was 1 hour or more ago: the cache has expired, so the next message writes the whole context again. It also works on a resumed session, and it goes away with ✕ or the next reply.
+- Input and output now follow the same rule as cache write: under 12% of cache read they are bubbles in the orange gel, and from 12% up they are their own layer.
+- Bubbles move more like they are in a liquid. They run faster in the middle of the tube than near the glass, speed up and slow down, drift up and down, and stretch a little along the flow.
+- The 5h and weekly tubes now sit on the bottom line of the band, next to the buttons.
+
+## 0.5.5 (2026-11-06)
+
+- While cache write is under 12% of cache read, it now shows as white bubbles flowing through the orange gel, with a total area that matches its share. From 12% up it is its own layer, right after the orange, at true scale.
+- Tube animations no longer restart when tokens are spent. Each animation now starts in the phase the clock gives it, so redrawing the tube carries the motion on from where it was.
+
+## 0.5.3 (2026-11-06)
+
+- The Mods, Stats, Clear and Handoff buttons now stay on the bottom line of the band instead of shifting up and down when the stats next to them wrap.
+
 ## 0.5.2 (2026-11-04)
 
 - The `/stats` command is now `/funstats`. Claude Code reserves `/stats`, so the old name was refused, which also skipped the rest of the mod's startup, including the Gemini refresh while the Stats pane is open.

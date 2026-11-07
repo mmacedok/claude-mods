@@ -130,3 +130,35 @@ test('sessions share one quota read and agy runs without its updater', async ($,
   await new Promise(r => setTimeout(r, 30))
   expect(rodou.length).toBe(1)
 })
+
+test('an hour after the last reply the warning shows, and a new reply clears it', async ($, on) => {
+  on('turn.complete', (_$, e: any) => ({ text: 'ok', usage: e.usage }))
+  on('session.measure', (_$, e: any) => ({ changed: e.changed }))
+  on('ui.render', ($$: any, e: any) => { const { Box } = $$.ui.resolve(e); return <Box key="engine" /> })
+  on('session.start', async () => ({ cwd: 'C:/x' }) as any)
+  on('ui.status', async () => ({ value: undefined }) as any)
+  on('command.register', async () => ({ value: undefined }) as any)
+  on('env.get', async () => ({ value: 'C:/Users/teste' }) as any)
+  on('fs.read', async () => ({ value: undefined }) as any)
+  on('fs.write', async () => ({ value: undefined }) as any)
+  on('process.run', async () => ({ value: { exitCode: 0, stdout: '{}', stderr: '' } }) as any)
+  on('ui.panes', async () => ({ value: [] }) as any)
+  on('session.id', async () => ({ value: 'sessao-1' }) as any)
+  const guardado: Record<string, unknown> = {}
+  on('store.get', async (_, e: any) => ({ value: guardado[e.key] }) as any)
+  on('store.set', async (_, e: any) => {
+    guardado[e.key] = e.value
+    return { value: undefined } as any
+  })
+  const relogio = mock.clock(on, { now: 1000 })
+  await $.session.start({ cwd: 'C:/x', source: 'startup' } as any)
+  await estado($, { turnos: 1 })
+  expect((await desenha($, 'desktop')).aviso).toBeUndefined()
+  await relogio.advance(59 * 60 * 1000)
+  expect((await desenha($, 'desktop')).aviso).toBeUndefined()
+  await relogio.advance(2 * 60 * 1000)
+  expect((await desenha($, 'desktop')).aviso).toBeDefined()
+  expect(Object.values(guardado.respostas as Record<string, number>)).toEqual([1000])
+  await estado($, { turnos: 1 })
+  expect((await desenha($, 'desktop')).aviso).toBeUndefined()
+})

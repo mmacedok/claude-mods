@@ -22,6 +22,9 @@ const velocidade = atom({ plugin: 'funmeter', key: 'velocidade' } as const, null
 const porModelo = atom({ plugin: 'funmeter', key: 'porModelo' } as const, {})
 const dobrados = atom({ plugin: 'funmeter', key: 'dobrados' } as const, {})
 const pulso = atom({ plugin: 'funmeter', key: 'pulso' } as const, 0)
+const ultimaResposta = atom({ plugin: 'funmeter', key: 'ultimaResposta' } as const, null)
+const parado = atom({ plugin: 'funmeter', key: 'parado' } as const, false)
+const paradoFechado = atom({ plugin: 'funmeter', key: 'paradoFechado' } as const, null)
 
 const LARANJA = '#D77757'
 const CLARO = '#EE9C78'
@@ -675,12 +678,32 @@ const tom = (h: string, m: number) => {
 }
 
 const TUBO_CSS =
-  '<style>.gl{animation:gl 8s ease-in-out infinite}.br{animation:br 5s ease-in-out infinite alternate}' +
-  '.bo{animation:bo 9s linear infinite}' +
+  '<style>.gl{animation:gl 8s ease-in-out var(--gl) infinite}.br{animation:br 5s ease-in-out var(--br) infinite alternate}' +
+  '.bo{animation:bo 9s linear var(--bo) infinite}' +
   '@keyframes gl{0%{transform:translateX(-90px)}45%,100%{transform:translateX(var(--fora))}}' +
   '@keyframes br{from{transform:translateX(-9px)}to{transform:translateX(9px)}}' +
   '@keyframes bo{from{transform:translateX(0)}to{transform:translateX(var(--fim))}}' +
   '@media (prefers-reduced-motion:reduce){.gl,.br,.bo{animation:none}}</style>'
+
+// Um SVG novo recomeça as animações do zero, e o tubo muda a cada token gasto. Por isso cada animação nasce já na fase
+// que o relógio manda: o desenho troca e o movimento continua de onde estava. Enquanto o desenho não muda, a fase
+// guardada é reusada, porque trocar o texto do SVG sem necessidade recarregaria a imagem à toa.
+// O mascote fica de fora: trocar de humor deve começar o clipe novo no primeiro quadro.
+const PERIODOS_CSS: Record<string, number> = { gl: 8, br: 10, bo: 9 } // br é alternate: ida e volta somam 10s
+function emFase(svg: string, ms: number): string {
+  const atras = (periodo: number) => `-${((ms / 1000) % periodo).toFixed(3)}s`
+  return svg
+    .replace(/ dur="([\d.]+)s"/g, (_, d) => ` begin="${atras(Number(d))}" dur="${d}s"`)
+    .replace(/--(gl|br|bo):0s/g, (_, n) => `--${n}:${atras(PERIODOS_CSS[n] ?? 1)}`)
+}
+const emFaseGuardado = new Map<string, { cru: string; pronto: string }>()
+function comFase(lugar: string, cru: string, ms: number): string {
+  const guardado = emFaseGuardado.get(lugar)
+  if (guardado?.cru === cru) return guardado.pronto
+  const pronto = emFase(cru, ms)
+  emFaseGuardado.set(lugar, { cru, pronto })
+  return pronto
+}
 
 // Tamanho da esfera em escala log: 4 tokens e 50k cabem no mesmo tubo e ainda dá para comparar.
 const raioDaEsfera = (n: number) => 5 + 6 * Math.min(1, Math.log10(1 + n) / Math.log10(50001))
@@ -706,25 +729,103 @@ function formaDoBlob(cx: number, cy: number, r: number, semente: number, t: numb
   }
   return `${d}Z`
 }
-function blob(cx: number, cy: number, r: number, semente: number, dur: number, attrs: string): string {
-  const quadros = Array.from({ length: 13 }, (_, q) => formaDoBlob(cx, cy, r, semente, (q / 12) * 2 * Math.PI))
+function blob(cx: number, cy: number, r: number, semente: number, dur: number, attrs: string, passos = 12): string {
+  const quadros = Array.from({ length: passos + 1 }, (_, q) => formaDoBlob(cx, cy, r, semente, (q / passos) * 2 * Math.PI))
   return `<path ${attrs} d="${quadros[0]}"><animate attributeName="d" dur="${dur}s" repeatCount="indefinite" values="${quadros.join(';')}"/></path>`
 }
 
 const ESFERA_FUNDE = 20 // largura do gel, em px, a partir da qual o tipo já é visível sem esfera
+
+// Enquanto um tipo é menos de 12% do cache read, ele não dá uma camada que se veja: vira gotas que fluem dentro do
+// laranja, com área igual à parte dele na mistura. Dali para cima é uma camada própria, à direita do laranja.
+const GOTAS_ATE = 0.12
+const GOTA_MARGEM = 9 // as gotas entram e saem fora da parte visível, onde o salto do loop não aparece
+const MISTURA_TOPO = 7.6 // abaixo da superfície mais funda do gel
+const MISTURA_BASE = 27 // acima do fundo mais alto do gel
+const GOTA_MIN = 1.6 // só para a gota continuar visível quando a parte é mínima
+const GOTAS_MAX = 16 // por tipo: com três tipos o desenho ainda cabe no limite de tamanho do SVG; a área se mantém com gotas maiores
+const GOTA_QUADROS = 20
+const sorteio = (i: number) => {
+  const v = Math.sin(i * 12.9898) * 43758.5453
+  return v - Math.floor(v)
+}
+function gotasDaMistura(x0: number, xFim: number, parte: number, id: string, ordem: number, corBase: string): string {
+  const w = xFim - x0
+  if (parte <= 0 || w < 2) return ''
+  const h = MISTURA_BASE - MISTURA_TOPO
+  const meio = (MISTURA_BASE + MISTURA_TOPO) / 2
+  const percurso = w + 2 * GOTA_MARGEM
+  const alvo = parte * percurso * h // o percurso inclui as margens escondidas, então a parte visível fica com a densidade certa
+  const rMedio = 3 + 7 * Math.min(parte, GOTAS_ATE)
+  const n = Math.max(1, Math.min(GOTAS_MAX, Math.round(alvo / (Math.PI * rMedio * rMedio))))
+  const pesos = Array.from({ length: n }, (_, i) => 1 + 0.3 * (2 * sorteio(i) - 1))
+  const k = alvo / (Math.PI * pesos.reduce((t, p) => t + p, 0))
+  const esquerda = x0 - GOTA_MARGEM
+  return pesos
+    .map((p, i) => {
+      const r = Math.max(GOTA_MIN, Math.sqrt(k * p))
+      const sem = i + ordem * 37
+      // Como num tubo de verdade, o líquido corre mais no meio que junto ao vidro: a profundidade da gota dá a velocidade.
+      // Tudo aqui depende só da gota, não da largura: o líquido crescer ou uma gota nova não fazem as outras saltarem.
+      const fundura = (i % 2 ? 1 : -1) * (0.15 + 0.85 * sorteio(sem + 100))
+      const periodo = Math.round(20 + 18 * fundura * fundura)
+      const cy = meio + fundura * Math.max(0, h / 2 - r * 0.85 - 2.3)
+      const inicio = (0.31 + ordem * 0.21 + i * 0.618034) % 1
+      // Acelera e freia ao longo do caminho, e sobe e desce em ondas lentas. Os senos dão voltas inteiras, então o loop fecha.
+      const surto = 0.035 + 0.025 * sorteio(sem + 200)
+      const surto2 = 0.012 * (sorteio(sem + 250) - 0.5)
+      const fx = sorteio(sem + 300)
+      const fy = sorteio(sem + 350)
+      const xEm = (u: number) => esquerda + percurso * (u + surto * Math.sin(2 * Math.PI * u) + surto2 * Math.sin(4 * Math.PI * u))
+      const yEm = (t: number) => cy + 1.5 * Math.sin(2 * Math.PI * (2 * t + fx)) + 0.8 * Math.sin(2 * Math.PI * (3 * t + fy))
+      const virada = 1 - inicio
+      const tempos = Array.from({ length: GOTA_QUADROS + 1 }, (_, q) => q / GOTA_QUADROS).filter(t => t !== virada)
+      const pontos: [number, number, number][] = []
+      for (const t of tempos) {
+        if (t > virada && (pontos[pontos.length - 1]?.[0] ?? 0) < virada) {
+          pontos.push([virada, xEm(1), yEm(virada)], [virada, xEm(0), yEm(virada)])
+        }
+        pontos.push([t, xEm(t < virada ? inicio + t : inicio + t - 1), yEm(t)])
+      }
+      const chaves = pontos.map(q => q[0].toFixed(4)).join(';')
+      const valores = pontos.map(q => `${q[1].toFixed(1)} ${q[2].toFixed(1)}`).join(';')
+      return (
+        `<g><animateTransform attributeName="transform" type="translate" dur="${periodo}s" repeatCount="indefinite" keyTimes="${chaves}" values="${valores}"/>` +
+        // um pouco esticada no sentido do fluxo
+        `<g transform="scale(1.2 .85)">` +
+        blob(0, 0, r, sem, 11 + (i % 5), `fill="url(#gota-${id})" stroke="${tom(corBase, -0.45)}" stroke-opacity=".7" stroke-width=".7"`, 4) +
+        `</g></g>`
+      )
+    })
+    .join('')
+}
 
 function tubo(f: Fatias, janela: number, W: number): string {
   const H = TUBO_H
   const x0 = TAMPA
   const L = W - 2 * TAMPA
   const LG = L - Math.min(BLOB_RESERVA, L * 0.3) // largura do gel quando o contexto está em 100%
+  const corDe = (campo: (typeof TIPOS)[number]['campo']) => TIPOS.find(x => x.campo === campo)?.cor ?? LIVRE
+  const menores = ['escrito', 'input', 'output'] as const
+  const emGotas = (c: (typeof TIPOS)[number]['campo']) => c !== 'lido' && f.lido > 0 && f[c] > 0 && f[c] / f.lido < GOTAS_ATE
+  const emMistura = menores.filter(emGotas)
+  const mistura = emMistura.reduce((t, c) => t + f[c], f.lido)
   let acum = 0
-  const pedacos = TIPOS.map(x => {
-    const a = acum
-    acum = Math.min(LG, acum + (f[x.campo] / janela) * LG)
-    return { cor: x.cor, id: x.campo, b: x0 + acum, largura: acum - a }
-  }).filter(p => p.largura >= 0.5)
+  const pedacos = (
+    [
+      { id: 'lido', n: mistura },
+      ...menores.map(c => ({ id: c, n: emGotas(c) ? 0 : f[c] })),
+    ] as const
+  )
+    .map(x => {
+      const a = acum
+      acum = Math.min(LG, acum + (x.n / janela) * LG)
+      return { cor: corDe(x.id), id: x.id, b: x0 + acum, largura: acum - a }
+    })
+    .filter(p => p.largura >= 0.5)
   const fim = x0 + acum
+  const xMistura = x0 + Math.min(LG, (mistura / janela) * LG)
+  const gotas = emMistura.map(c => gotasDaMistura(x0, xMistura, f[c] / mistura, c, menores.indexOf(c), corDe('lido'))).join('')
 
   // superfície irregular do gel: a mesma para todos os pedaços, para eles encaixarem
   const topo = (x: number, t: number) => PAREDE + 2.1 + 1.7 * Math.sin(x / 15 + t) + 0.8 * Math.sin(x / 6.1 + t * 2)
@@ -743,9 +844,11 @@ function tubo(f: Fatias, janela: number, W: number): string {
   const bojos = [11, 15, 8, 11]
   const geis = [...pedacos]
     .reverse()
-    .map((p, i) => {
+    .map(p => {
       const quadros = fases.map((t, q) => contorno(p.b, t, bojos[q] ?? 11))
-      return `<path fill="url(#c-${p.id})" d="${quadros[0]}"><animate attributeName="d" dur="${6 + i}s" repeatCount="indefinite" values="${quadros.join(';')}"/></path>`
+      // a duração é do tipo, não da posição: um gel novo não muda o ritmo dos outros
+      const dur = p.id === 'input' ? 7 : p.id === 'output' ? 8 : p.id === 'escrito' ? 9 : 6
+      return `<path fill="url(#c-${p.id})" d="${quadros[0]}"><animate attributeName="d" dur="${dur}s" repeatCount="indefinite" values="${quadros.join(';')}"/></path>`
     })
     .join('')
 
@@ -757,23 +860,25 @@ function tubo(f: Fatias, janela: number, W: number): string {
     )
     .join('')
 
-  // brilhos molhados e bolhas dentro do gel
+  // brilhos molhados e bolhas dentro do gel; com gotas na mistura ficam fracos, para não parecerem cache write
+  const forcaBrilho = gotas ? 0.35 : 1
   const brilhos: string[] = []
   for (let x = x0 + 8, i = 0; x < fim - 4; x += 15 + ((i * 13) % 17), i++) {
-    brilhos.push(`<ellipse cx="${x}" cy="${(H * 0.4 + (i % 3) * 0.9).toFixed(1)}" rx="${4 + (i % 4) * 1.5}" ry="${(1.4 + (i % 2) * 0.7).toFixed(1)}" fill="#fff" fill-opacity="${(0.62 + (i % 3) * 0.14).toFixed(2)}"/>`)
-    if (i % 2 === 0) brilhos.push(`<circle cx="${x + 7}" cy="${(H * 0.56 + (i % 3)).toFixed(1)}" r="1.1" fill="#fff" fill-opacity=".55"/>`)
+    brilhos.push(`<ellipse cx="${x}" cy="${(H * 0.4 + (i % 3) * 0.9).toFixed(1)}" rx="${4 + (i % 4) * 1.5}" ry="${(1.4 + (i % 2) * 0.7).toFixed(1)}" fill="#fff" fill-opacity="${((0.62 + (i % 3) * 0.14) * forcaBrilho).toFixed(2)}"/>`)
+    if (!gotas && i % 2 === 0) brilhos.push(`<circle cx="${x + 7}" cy="${(H * 0.56 + (i % 3)).toFixed(1)}" r="1.1" fill="#fff" fill-opacity=".55"/>`)
   }
   const bolhas =
-    fim - x0 < 40
+    gotas || fim - x0 < 40
       ? ''
       : [0, 1, 2, 3, 4]
-          .map(i => `<circle class="bo" style="animation-delay:-${(i * 1.9).toFixed(1)}s" cx="${x0}" cy="${H * 0.33 + ((i * 5) % 9) * (H / 24)}" r="${(0.8 + (i % 3) * 0.4).toFixed(1)}" fill="#fff" fill-opacity=".38"/>`)
+          .map(i => `<circle class="bo" style="animation-delay:calc(var(--bo) - ${(i * 1.9).toFixed(1)}s)" cx="${x0}" cy="${H * 0.33 + ((i * 5) % 9) * (H / 24)}" r="${(0.8 + (i % 3) * 0.4).toFixed(1)}" fill="#fff" fill-opacity=".38"/>`)
           .join('')
 
   // Input, cache write e output somem perto do cache read: cada um vira uma esfera no espaço livre do tubo.
   // A área reservada garante que sempre há lugar fora do gel; se faltar espaço, elas encolhem.
   // Quando o pedaço de gel do tipo já dá para ver, a esfera se mistura ao gel e deixa de existir.
-  const dados = TIPOS.filter(x => x.campo !== 'lido' && f[x.campo] > 0 && (f[x.campo] / janela) * LG < ESFERA_FUNDE).map(x => ({ id: x.campo, cor: x.cor, r: raioDaEsfera(f[x.campo]) }))
+  // Um tipo em gotas já está à vista dentro do laranja, então não precisa de esfera.
+  const dados = TIPOS.filter(x => x.campo !== 'lido' && !emGotas(x.campo) && f[x.campo] > 0 && (f[x.campo] / janela) * LG < ESFERA_FUNDE).map(x => ({ id: x.campo, cor: x.cor, r: raioDaEsfera(f[x.campo]), ordem: TIPOS.indexOf(x) }))
   // Medidas pelo raio externo do blob: o espaço entre eles e o balanço garantem que nunca se encostem.
   const VAO = 4
   const inteiro = dados.reduce((t, d) => t + 2 * d.r * BLOB_EXT, 0)
@@ -784,17 +889,17 @@ function tubo(f: Fatias, janela: number, W: number): string {
   const vao = Math.min(36, (livre - ocupado) / (dados.length + 1))
   let xBlob = fim + 8 + vao
   const esferas = dados
-    .map((d, i) => {
+    .map(d => {
       const r = d.r * fator
       const ext = r * BLOB_EXT
       const cx = xBlob + ext
       xBlob += 2 * ext + vao
       const dx = Math.max(0, Math.min(4, vao / 2 - 0.5)).toFixed(1)
       const dy = Math.min(2.5, Math.max(0, H / 2 - PAREDE - ext)).toFixed(1)
-      const dur = 13 + i * 3
+      const dur = 13 + d.ordem * 3
       return (
         `<g><animateTransform attributeName="transform" type="translate" dur="${dur * 1.5}s" repeatCount="indefinite" values="0 0;${dx} -${dy};0 ${dy};-${dx} 0;0 0"/>` +
-        blob(cx, H / 2, r, i, dur, `fill="url(#e-${d.id})" stroke="#10151a" stroke-opacity=".75" stroke-width=".8"`) +
+        blob(cx, H / 2, r, d.ordem, dur, `fill="url(#e-${d.id})" stroke="#10151a" stroke-opacity=".75" stroke-width=".8"`) +
         `<ellipse cx="${(cx - r * 0.32).toFixed(1)}" cy="${(H / 2 - r * 0.4).toFixed(1)}" rx="${(r * 0.34).toFixed(1)}" ry="${(r * 0.22).toFixed(1)}" fill="#fff" fill-opacity=".85"/></g>`
       )
     })
@@ -811,8 +916,12 @@ function tubo(f: Fatias, janela: number, W: number): string {
   const interno = `x="${x0}" y="${PAREDE}" width="${L}" height="${H - 2 * PAREDE}"`
   const casca = `x="${x0 - 3}" y="1.5" width="${L + 6}" height="${H - 3}"`
   return (
-    `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" style="--fim:${(fim - x0).toFixed(0)}px;--fora:${W + 90}px">${TUBO_CSS}` +
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" style="--fim:${(fim - x0).toFixed(0)}px;--fora:${W + 90}px;--gl:0s;--br:0s;--bo:0s">${TUBO_CSS}` +
     `<defs>${cores}${coresEsferas}` +
+    emMistura
+      .map(c => `<radialGradient id="gota-${c}" cx=".42" cy=".36" r=".68"><stop offset="0" stop-color="${tom(corDe(c), 0.45)}"/><stop offset=".6" stop-color="${corDe(c)}"/><stop offset="1" stop-color="${tom(corDe(c), -0.28)}"/></radialGradient>`)
+      .join('') +
+    `<clipPath id="mistura"><path d="${contorno(xMistura, 0, 11)}"/></clipPath>` +
     `<clipPath id="dentro"><rect ${interno}/></clipPath>` +
     `<clipPath id="cheio"><rect x="${x0}" y="0" width="${Math.max(0, fim - x0 - 3).toFixed(1)}" height="${H}"/></clipPath>` +
     `<linearGradient id="metal" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#dfe5e8"/><stop offset=".5" stop-color="#8d979d"/><stop offset="1" stop-color="#4c5459"/></linearGradient>` +
@@ -822,7 +931,7 @@ function tubo(f: Fatias, janela: number, W: number): string {
     `<linearGradient id="clarao" x1="0" x2="1"><stop offset="0" stop-color="#fff" stop-opacity="0"/><stop offset=".5" stop-color="#fff" stop-opacity=".55"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>` +
     `</defs>` +
     `<rect ${casca} fill="url(#vidro)"/>` +
-    `<g clip-path="url(#dentro)">${geis}<g clip-path="url(#cheio)"><g class="br">${brilhos.join('')}</g>${bolhas}</g>${esferas}</g>` +
+    `<g clip-path="url(#dentro)">${geis}<g clip-path="url(#mistura)">${gotas}</g><g clip-path="url(#cheio)"><g class="br">${brilhos.join('')}</g>${bolhas}</g>${esferas}</g>` +
     `<path d="M${x0 - 3} 1.5H${x0 + L + 3}M${x0 - 3} ${H - 1.5}H${x0 + L + 3}" fill="none" stroke="#c4dbe6" stroke-opacity=".55"/>` +
     `<rect x="${x0}" y="3" width="${L}" height="3" fill="url(#reflexo)" filter="url(#macio)"/>` +
     `<rect x="${x0}" y="${H - 4.2}" width="${L}" height="1.2" fill="#fff" fill-opacity=".14" filter="url(#macio)"/>` +
@@ -1029,6 +1138,9 @@ async function zerar($: EngineInterface) {
   await update($, piso, () => null)
   await update($, mensagens, () => 0)
   await update($, fechado, () => null)
+  await update($, ultimaResposta, () => null)
+  await update($, parado, () => false)
+  await update($, paradoFechado, () => null)
   await update($, velocidade, () => null)
   await update($, porModelo, () => ({}))
 }
@@ -1141,6 +1253,53 @@ async function fecharAviso($: EngineInterface) {
   await update($, fechado, () => n)
 }
 
+// Passada 1h da última resposta o cache expirou, e a próxima mensagem escreve o contexto inteiro de novo como cache write.
+// A hora fica também em $.store, para o aviso valer numa sessão retomada depois de fechar o app.
+const PARADO_MS = 60 * 60 * 1000
+const RESPOSTAS_MAX = 50
+
+async function verParado($: EngineInterface) {
+  const quando = await read($, ultimaResposta)
+  const agora = await $.clock.now()
+  const esta = quando !== null && agora - quando >= PARADO_MS
+  if (esta !== (await read($, parado))) await update($, parado, () => esta)
+}
+
+async function lerResposta($: EngineInterface) {
+  try {
+    const salvas = ((await $.store.get('respostas')) ?? {}) as Record<string, number>
+    const quando = salvas[await $.session.id()]
+    if (quando) await update($, ultimaResposta, () => quando)
+  } catch {
+    // sem a hora salva, o aviso só deixa de valer para uma sessão retomada; o medidor segue normal
+  }
+}
+
+async function guardarResposta($: EngineInterface) {
+  const agora = await $.clock.now()
+  await update($, ultimaResposta, () => agora)
+  await update($, parado, () => false)
+  try {
+    const salvas = ((await $.store.get('respostas')) ?? {}) as Record<string, number>
+    const recentes = Object.entries({ ...salvas, [await $.session.id()]: agora })
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, RESPOSTAS_MAX)
+    await $.store.set('respostas', Object.fromEntries(recentes))
+  } catch {
+    // idem: guardar a hora nunca pode derrubar o resto do fim de turno
+  }
+}
+
+async function fecharParado($: EngineInterface) {
+  const quando = await read($, ultimaResposta)
+  await update($, paradoFechado, () => quando)
+}
+
+const duracao = (ms: number) => {
+  const min = Math.floor(ms / 60000)
+  return `${Math.floor(min / 60)}h ${String(min % 60).padStart(2, '0')}m`
+}
+
 let ultimoBom: any = null
 
 export const register: Register = on => {
@@ -1151,6 +1310,9 @@ export const register: Register = on => {
     await acharCasa($)
     void atualizarCotas($)
     $.clock.every(COTA_OLHA_MS, () => void atualizarCotas($))
+    await lerResposta($)
+    await verParado($)
+    $.clock.every(30000, () => void verParado($))
     await $.command.register({ name: 'funstats', description: 'Show or hide the usage stats pane' })
     // Mantém os números do Gemini frescos enquanto o painel está aberto.
     $.clock.every(4000, () => {
@@ -1217,6 +1379,7 @@ export const register: Register = on => {
     turnosContados.delete(e.turnId)
     if (!e.agentId) {
       await update($, mensagens, n => n + 1)
+      await guardarResposta($)
       await update($, feliz, () => true)
       $.clock.after(4000, () => update($, feliz, () => false))
     }
@@ -1254,7 +1417,7 @@ export const register: Register = on => {
 
     // Everything is read at once and next(e) is asked last: while Claude works the band redraws many times a second,
     // and a slow draw that asked next(e) first left the band without the meter whenever a newer redraw cut it short.
-    const [lidas, m, t, gasto, estimativa, usadas, lims, gerando, contente, agora, base, msgs, fechouEm, plano, tokSeg] = await Promise.all([
+    const [lidas, m, t, gasto, estimativa, usadas, lims, gerando, contente, agora, base, msgs, fechouEm, plano, tokSeg, respondeuEm, estaParado, paradoFechou] = await Promise.all([
       read($, fatias),
       read($, medida),
       read($, totais),
@@ -1270,6 +1433,9 @@ export const register: Register = on => {
       read($, fechado),
       read($, cotas),
       read($, velocidade),
+      read($, ultimaResposta),
+      read($, parado),
+      read($, paradoFechado),
     ])
 
     // Sempre visível: antes da primeira resposta (e depois do Clear) desenha o funmeter inteiro zerado, com o mascote animado.
@@ -1309,8 +1475,10 @@ export const register: Register = on => {
     const extra = ocupadoCtx - (base ?? ocupadoCtx)
     const vale = FORCAR_LARANJA || valeHandoff(ocupadoCtx, base, msgs, percent)
     const aviso = vale && (fechouEm === null || msgs - fechouEm >= REAPARECE_MSGS)
-    const textoAviso =
-      extra > 0
+    const avisoParado = estaParado && !e.props.isWorking && ocupadoCtx > 0 && respondeuEm !== null && paradoFechou !== respondeuEm
+    const textoAviso = avisoParado
+      ? `Last reply was ${duracao(agora - (respondeuEm ?? agora))} ago: the cache has expired, so your next message writes all ${num(ocupadoCtx)} tokens of context again. Handoff starts fresh instead.`
+      : extra > 0
         ? `Good time for a handoff: ${num(extra)} tokens of history, it pays for itself in ~${Math.max(1, Math.ceil(HANDOFF_CUSTO / (extra * 0.1)))} messages`
         : `Good time for a handoff: context at ${percent}%`
     // O desenho nasce um pouco mais largo que o espaço; sem `width`, o app o encolhe até a vaga e o tubo encosta no x%.
@@ -1325,7 +1493,7 @@ export const register: Register = on => {
 
     return (
       <Box flexDirection="column">
-      {aviso && (
+      {(avisoParado || aviso) && (
         <Box
           key="aviso-handoff"
           flexDirection="row"
@@ -1339,7 +1507,7 @@ export const register: Register = on => {
           <Text color="#ffffff" bold>
             {textoAviso}
           </Text>
-          <Button key="fechar-aviso" plain label="✕" onPress={() => fecharAviso($)} />
+          <Button key="fechar-aviso" plain label="✕" onPress={() => (avisoParado ? fecharParado($) : fecharAviso($))} />
         </Box>
       )}
       <Box flexDirection="row" gap={1} alignItems="center">
@@ -1352,7 +1520,7 @@ export const register: Register = on => {
         <Box flexDirection="row" gap={1} alignItems="center">
           {Svg ? (
             <Box key="tubo" flexGrow={1} flexShrink={1} minWidth={0}>
-              <Svg source={tubo(f, janela, tuboW)} alt={`Context ${percent}%`} height={TUBO_H} />
+              <Svg key="tubo-svg" source={comFase('tubo', tubo(f, janela, tuboW), agora)} alt={`Context ${percent}%`} height={TUBO_H} />
             </Box>
           ) : (
             <Box flexDirection="row" flexGrow={1} columnGap={0}>
@@ -1418,12 +1586,12 @@ export const register: Register = on => {
             </Box>
           </Box>
           {Svg && (cincoHoras || semana) && (
-            <Box key="tubos-limite" flexDirection="row" flexShrink={0} alignItems="center">
-              {cincoHoras && <Svg source={tuboVertical('5h', cincoHoras.percentUsed)} alt={`5 hour limit ${cincoHoras.percentUsed}%`} width={VT_W} height={VT_H} />}
-              {semana && <Svg source={tuboVertical('wk', semana.percentUsed)} alt={`Weekly limit ${semana.percentUsed}%`} width={VT_W} height={VT_H} />}
+            <Box key="tubos-limite" flexDirection="row" flexShrink={0} alignItems="center" alignSelf="flex-end">
+              {cincoHoras && <Svg source={comFase('5h', tuboVertical('5h', cincoHoras.percentUsed), agora)} alt={`5 hour limit ${cincoHoras.percentUsed}%`} width={VT_W} height={VT_H} />}
+              {semana && <Svg source={comFase('wk', tuboVertical('wk', semana.percentUsed), agora)} alt={`Weekly limit ${semana.percentUsed}%`} width={VT_W} height={VT_H} />}
             </Box>
           )}
-          <Box flexDirection="row" columnGap={1} flexShrink={0}>
+          <Box flexDirection="row" columnGap={1} flexShrink={0} alignSelf="flex-end">
             <Button key="mods" label="Mods" onPress={() => $.ui.open({ id: "mods", title: "Mods" })} />
             <Button key="stats" label="Stats" onPress={() => void alternarStats($)} />
             <Button key="clear" label="Clear" onPress={() => limpar($)} />

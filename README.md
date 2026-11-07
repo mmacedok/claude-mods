@@ -43,7 +43,9 @@ From the start of the tube to the dotted mark is 100% of the context window, at 
 | White | `CW` | Cache write |
 | Purple | `O` | Output |
 
-Cache read is usually so much larger than the rest that the other types would barely show. So each of them also gets a blob in the free part of the tube:
+While cache write, input or output is under 12% of cache read, it shows as bubbles of its color flowing through the orange gel, with a total area that matches its share. From 12% up it is its own layer, to the right of the orange.
+
+A layer can still be too thin to see, and with no cache read there is no gel to hold bubbles. In those cases the type also gets a blob in the free part of the tube:
 
 ![Three states of the tube](docs/funmeter/tube-cases.gif)
 

@@ -24,6 +24,9 @@ declare module 'claude-code' {
       porModelo: Record<string, UsoModelo>
       dobrados: Record<string, boolean>
       pulso: number
+      ultimaResposta: number | null
+      parado: boolean
+      paradoFechado: number | null
     }
   }
 }

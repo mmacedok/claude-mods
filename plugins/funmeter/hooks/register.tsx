@@ -984,7 +984,7 @@ function tubo(fCru: Fatias, janelaCrua: number, larguraCrua: number): string {
 
 // A barrinha discreta da cota do Gemini: só o trilho azul que enche conforme o plano é consumido.
 const AZUL = '#4FA8FF'
-const COTA_W = 42
+const COTA_W = 28
 const COTA_H = 5
 const barrinha = (usado: number, cor = AZUL) =>
   `<svg xmlns="http://www.w3.org/2000/svg" width="${COTA_W}" height="${COTA_H}" viewBox="0 0 ${COTA_W} ${COTA_H}">` +
@@ -1800,12 +1800,13 @@ export const register: Register = on => {
             <Box flexDirection="row" flexWrap="wrap" columnGap={1} alignItems="center">
               {/* Uma caixinha por agente, com as cotas dele dentro. */}
               {[
-                { nome: 'Gemini', cor: AZUL, lista: planoVisivel },
-                { nome: 'Codex', cor: VERDE_AGUA, lista: codex },
+                { nome: 'Gemini', cor: AZUL, fundo: '#1A2738', lista: planoVisivel },
+                { nome: 'Codex', cor: VERDE_AGUA, fundo: '#142D2A', lista: codex },
               ]
                 .filter(g => g.lista.length > 0)
                 .map(g => (
-                  <Box key={`agente-${g.nome}`} flexDirection="row" columnGap={1} alignItems="center" flexShrink={0} borderStyle="round" borderColor={g.cor} paddingX={1}>
+                  // Fundo tingido em vez de borda: a caixinha ocupa uma linha só.
+                  <Box key={`agente-${g.nome}`} flexDirection="row" columnGap={1} alignItems="center" flexShrink={0} backgroundColor={g.fundo} paddingX={1}>
                     <Text color={g.cor} bold>
                       {g.nome}
                     </Text>
@@ -1818,7 +1819,7 @@ export const register: Register = on => {
                     ))}
                   </Box>
                 ))}
-              <Text dimColor wrap="truncate-end">Skills: {listaSkills}</Text>
+              {usadas.length > 0 && <Text dimColor wrap="truncate-end">Skills: {listaSkills}</Text>}
             </Box>
       </Box>
       {/* Tubos e botões numa coluna à direita: assim os números ficam em linha sob o tubo de contexto. */}

@@ -1,5 +1,9 @@
 # FunMeter changelog
 
+## 0.5.14 (2026-11-08)
+
+- Agent boxes are compact: a tinted background instead of a border, so each takes one line, and smaller meters so Gemini and Codex fit side by side. "Skills: none" is hidden when no skill was used.
+
 ## 0.5.13 (2026-11-08)
 
 - Agents in boxes: Gemini (blue, the Google plan quotas) and Codex (teal, the ChatGPT plan 5h and weekly limits) each get a bordered box with their meters. Codex limits are read from its latest session file, at no cost.

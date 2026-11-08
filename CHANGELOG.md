@@ -1,5 +1,9 @@
 # FunMeter changelog
 
+## 0.5.13 (2026-11-08)
+
+- Agents in boxes: Gemini (blue, the Google plan quotas) and Codex (teal, the ChatGPT plan 5h and weekly limits) each get a bordered box with their meters. Codex limits are read from its latest session file, at no cost.
+
 ## 0.5.12 (2026-11-08)
 
 - Layout: the limit tubes and the buttons now sit in a column on the right, so the token numbers stay in a row under the context tube instead of stacking one per line. Gemini meters no longer break their labels.

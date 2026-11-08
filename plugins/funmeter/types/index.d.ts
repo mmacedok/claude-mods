@@ -22,6 +22,7 @@ declare module 'claude-code' {
       mensagens: number
       fechado: number | null
       cotas: Cota[]
+      cotasCodex: Cota[]
       velocidade: number | null
       porModelo: Record<string, UsoModelo>
       dobrados: Record<string, boolean>

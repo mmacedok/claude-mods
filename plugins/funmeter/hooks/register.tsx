@@ -19,6 +19,7 @@ const mensagens = atom({ plugin: 'funmeter', key: 'mensagens' } as const, 0)
 const fechado = atom({ plugin: 'funmeter', key: 'fechado' } as const, null)
 const hoje = atom({ plugin: 'funmeter', key: 'hoje' } as const, null)
 const cotas = atom({ plugin: 'funmeter', key: 'cotas' } as const, [])
+const cotasCodex = atom({ plugin: 'funmeter', key: 'cotasCodex' } as const, [])
 const velocidade = atom({ plugin: 'funmeter', key: 'velocidade' } as const, null)
 const porModelo = atom({ plugin: 'funmeter', key: 'porModelo' } as const, {})
 const dobrados = atom({ plugin: 'funmeter', key: 'dobrados' } as const, {})
@@ -985,10 +986,12 @@ function tubo(fCru: Fatias, janelaCrua: number, larguraCrua: number): string {
 const AZUL = '#4FA8FF'
 const COTA_W = 42
 const COTA_H = 5
-const barrinha = (usado: number) =>
+const barrinha = (usado: number, cor = AZUL) =>
   `<svg xmlns="http://www.w3.org/2000/svg" width="${COTA_W}" height="${COTA_H}" viewBox="0 0 ${COTA_W} ${COTA_H}">` +
-  `<rect width="${COTA_W}" height="${COTA_H}" rx="2.5" fill="${AZUL}" fill-opacity=".18"/>` +
-  `<rect width="${(Math.min(1, Math.max(0, usado)) * COTA_W).toFixed(2)}" height="${COTA_H}" rx="2.5" fill="${AZUL}" fill-opacity=".9"/></svg>`
+  `<rect width="${COTA_W}" height="${COTA_H}" rx="2.5" fill="${cor}" fill-opacity=".18"/>` +
+  `<rect width="${(Math.min(1, Math.max(0, usado)) * COTA_W).toFixed(2)}" height="${COTA_H}" rx="2.5" fill="${cor}" fill-opacity=".9"/></svg>`
+// O Codex (plano ChatGPT) tem a sua cor: um verde-água que não se confunde com os géis nem com o azul do Gemini.
+const VERDE_AGUA = '#2DD4BF'
 
 // Os tubos verticais dos limites do Claude (5h e semana): uma gota cai do bico e o gel acumula no fundo.
 const VT_W = 58
@@ -1206,6 +1209,71 @@ async function atualizarCotas($: EngineInterface) {
     }
   } catch {
     // sem agy ou sem rede: fica a última leitura
+  }
+}
+
+// O Codex grava o limite do plano ChatGPT em cada sessão (~/.codex/sessions/AAAA/MM/DD/*.jsonl).
+// Lê a sessão mais recente, sem gastar nada; só relê quando o arquivo muda.
+const sessoesCodex = () => `${CASA}/.codex/sessions`
+const dois = (n: number) => String(n).padStart(2, '0')
+let codexLido: { arq: string; mtimeMs: number } | null = null
+
+function acharLimites(o: unknown): Record<string, unknown> | null {
+  if (!o || typeof o !== 'object') return null
+  const r = (o as Record<string, unknown>).rate_limits
+  if (r && typeof r === 'object') return r as Record<string, unknown>
+  for (const v of Object.values(o)) {
+    const achado = acharLimites(v)
+    if (achado) return achado
+  }
+  return null
+}
+
+function lerCodex(texto: string, agora: number): Cota[] | null {
+  const linhas = texto.split('\n')
+  for (let i = linhas.length - 1; i >= 0; i--) {
+    if (!linhas[i].includes('"rate_limits"')) continue
+    let rl: Record<string, unknown> | null = null
+    try {
+      rl = acharLimites(JSON.parse(linhas[i]))
+    } catch {
+      continue
+    }
+    if (!rl) continue
+    const lista: Cota[] = []
+    for (const b of [rl.primary, rl.secondary] as ({ used_percent?: number; window_minutes?: number; resets_at?: number } | null)[]) {
+      if (!b || typeof b.used_percent !== 'number') continue
+      const min = b.window_minutes ?? 0
+      const janela = min >= 10080 ? 'wk' : min % 60 === 0 && min > 0 ? `${min / 60}h` : `${min}m`
+      // Se a janela já reiniciou depois dessa leitura, o uso voltou a zero.
+      const reiniciou = typeof b.resets_at === 'number' && b.resets_at * 1000 <= agora
+      lista.push({ nome: 'Codex', janela, usado: reiniciou ? 0 : b.used_percent / 100 })
+    }
+    return lista.length ? lista : null
+  }
+  return null
+}
+
+async function atualizarCodex($: EngineInterface) {
+  let achado: { arq: string; mtimeMs: number } | null = null
+  for (let d = 0; d < 7 && !achado; d++) {
+    const dia = new Date(Date.now() - d * 86400000)
+    const pasta = `${sessoesCodex()}/${dia.getFullYear()}/${dois(dia.getMonth() + 1)}/${dois(dia.getDate())}`
+    try {
+      const lista = (await $.fs.list(pasta)) as { name: string; kind: string; mtimeMs: number }[]
+      const ult = lista.filter(a => a.kind === 'file' && a.name.endsWith('.jsonl')).sort((a, b) => b.mtimeMs - a.mtimeMs)[0]
+      if (ult) achado = { arq: `${pasta}/${ult.name}`, mtimeMs: ult.mtimeMs }
+    } catch {
+      // dia sem sessão do Codex
+    }
+  }
+  if (!achado || (codexLido?.arq === achado.arq && codexLido.mtimeMs === achado.mtimeMs)) return
+  try {
+    const lista = lerCodex(String(await $.fs.read(achado.arq)), Date.now())
+    codexLido = achado
+    if (lista) await update($, cotasCodex, () => lista)
+  } catch {
+    // arquivo sendo gravado: tenta na próxima volta
   }
 }
 
@@ -1438,7 +1506,11 @@ export const register: Register = on => {
     $.ui.status(undefined)
     await acharCasa($)
     void atualizarCotas($)
-    $.clock.every(COTA_OLHA_MS, () => void atualizarCotas($))
+    void atualizarCodex($)
+    $.clock.every(COTA_OLHA_MS, () => {
+      void atualizarCotas($)
+      void atualizarCodex($)
+    })
     await lerResposta($)
     await verParado($)
     $.clock.every(30000, () => void verParado($))
@@ -1567,7 +1639,7 @@ export const register: Register = on => {
 
     // Everything is read at once and next(e) is asked last: while Claude works the band redraws many times a second,
     // and a slow draw that asked next(e) first left the band without the meter whenever a newer redraw cut it short.
-    const [lidas, m, t, gasto, estimativa, usadas, lims, cotaHoje, gerando, contente, agora, base, msgs, fechouEm, plano, tokSeg, respondeuEm, estaParado, paradoFechou, sid] = await Promise.all([
+    const [lidas, m, t, gasto, estimativa, usadas, lims, cotaHoje, gerando, contente, agora, base, msgs, fechouEm, plano, tokSeg, respondeuEm, estaParado, paradoFechou, sid, codex] = await Promise.all([
       read($, fatias),
       read($, medida),
       read($, totais),
@@ -1588,6 +1660,7 @@ export const register: Register = on => {
       read($, parado),
       read($, paradoFechado),
       $.session.id().catch(() => ''),
+      read($, cotasCodex),
     ])
 
     // Sempre visível: antes da primeira resposta (e depois do Clear) desenha o funmeter inteiro zerado, com o mascote animado.
@@ -1724,18 +1797,27 @@ export const register: Register = on => {
                 </Text>
               )}
             </Box>
-            <Box flexDirection="row" flexWrap="wrap" columnGap={2} alignItems="center">
-              {planoVisivel.map(c => (
-                <Box key={`${c.nome}-${c.janela}`} flexDirection="row" columnGap={1} alignItems="center" flexShrink={0}>
-                  <Text color={AZUL} dimColor>
-                    {c.nome} {c.janela}
-                  </Text>
-                  {Svg && <Svg source={barrinha(c.usado)} alt={`${c.nome} ${c.janela} ${Math.round(c.usado * 100)}%`} width={COTA_W} height={COTA_H} />}
-                  <Text color={AZUL} dimColor>
-                    {Math.round(c.usado * 100)}%
-                  </Text>
-                </Box>
-              ))}
+            <Box flexDirection="row" flexWrap="wrap" columnGap={1} alignItems="center">
+              {/* Uma caixinha por agente, com as cotas dele dentro. */}
+              {[
+                { nome: 'Gemini', cor: AZUL, lista: planoVisivel },
+                { nome: 'Codex', cor: VERDE_AGUA, lista: codex },
+              ]
+                .filter(g => g.lista.length > 0)
+                .map(g => (
+                  <Box key={`agente-${g.nome}`} flexDirection="row" columnGap={1} alignItems="center" flexShrink={0} borderStyle="round" borderColor={g.cor} paddingX={1}>
+                    <Text color={g.cor} bold>
+                      {g.nome}
+                    </Text>
+                    {g.lista.map((c: Cota) => (
+                      <Box key={`${c.nome}-${c.janela}`} flexDirection="row" columnGap={1} alignItems="center" flexShrink={0}>
+                        <Text dimColor>{c.nome === g.nome ? c.janela : `${c.nome} ${c.janela}`}</Text>
+                        {Svg && <Svg source={barrinha(c.usado, g.cor)} alt={`${c.nome} ${c.janela} ${Math.round(c.usado * 100)}%`} width={COTA_W} height={COTA_H} />}
+                        <Text color={g.cor}>{Math.round(c.usado * 100)}%</Text>
+                      </Box>
+                    ))}
+                  </Box>
+                ))}
               <Text dimColor wrap="truncate-end">Skills: {listaSkills}</Text>
             </Box>
       </Box>

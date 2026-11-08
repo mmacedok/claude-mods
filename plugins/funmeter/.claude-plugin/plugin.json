@@ -1,1 +1,1 @@
-{"name":"funmeter","version":"0.5.12","description":"A live band above the prompt: context by token type, cost, cache hit, speed and plan limits, with a mascot and a Handoff button","types":"./types/index.d.ts"}
+{"name":"funmeter","version":"0.5.13","description":"A live band above the prompt: context by token type, cost, cache hit, speed and plan limits, with a mascot and a Handoff button","types":"./types/index.d.ts"}

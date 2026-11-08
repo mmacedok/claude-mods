@@ -1695,8 +1695,6 @@ export const register: Register = on => {
             </Text>
           </Box>
         </Box>
-        <Box flexDirection="row" alignItems="center" columnGap={1}>
-          <Box flexDirection="column" flexGrow={1} flexShrink={1} minWidth={0}>
             <Box flexDirection="row" flexWrap="wrap" columnGap={2}>
               {TIPOS.map(x => (
                 <Text key={x.campo}>
@@ -1728,7 +1726,7 @@ export const register: Register = on => {
             </Box>
             <Box flexDirection="row" flexWrap="wrap" columnGap={2} alignItems="center">
               {planoVisivel.map(c => (
-                <Box key={`${c.nome}-${c.janela}`} flexDirection="row" columnGap={1} alignItems="center">
+                <Box key={`${c.nome}-${c.janela}`} flexDirection="row" columnGap={1} alignItems="center" flexShrink={0}>
                   <Text color={AZUL} dimColor>
                     {c.nome} {c.janela}
                   </Text>
@@ -1740,9 +1738,11 @@ export const register: Register = on => {
               ))}
               <Text dimColor wrap="truncate-end">Skills: {listaSkills}</Text>
             </Box>
-          </Box>
+      </Box>
+      {/* Tubos e botões numa coluna à direita: assim os números ficam em linha sob o tubo de contexto. */}
+      <Box key="lado" flexDirection="column" flexShrink={0} alignItems="flex-end" rowGap={1}>
           {Svg && (cincoHoras || semana) && (
-            <Box key="tubos-limite" flexDirection="row" flexShrink={0} alignItems="center" alignSelf="flex-end">
+            <Box key="tubos-limite" flexDirection="row" alignItems="center">
               {cincoHoras && <Svg source={comFase(`${sid}:5h`, tuboVertical('5h', cincoHoras.percentUsed), agora)} alt={`5 hour limit ${cincoHoras.percentUsed}%`} width={VT_W} height={VT_H} />}
               {pctHoje !== null && <Svg source={comFase(`${sid}:24h`, bateria('24h', 100 - pctHoje), agora)} alt={`Today's share of the weekly limit: ${Math.round(100 - pctHoje)}% left`} width={VT_W} height={VT_H} />}
               {semana && <Svg source={comFase(`${sid}:wk`, tuboVertical('wk', semana.percentUsed), agora)} alt={`Weekly limit ${semana.percentUsed}%`} width={VT_W} height={VT_H} />}
@@ -1759,7 +1759,6 @@ export const register: Register = on => {
               onPress={() => handoff($)}
             />
           </Box>
-        </Box>
       </Box>
       </Box>
       </Box>

@@ -1,5 +1,9 @@
 # FunMeter changelog
 
+## 0.5.12 (2026-11-08)
+
+- Layout: the limit tubes and the buttons now sit in a column on the right, so the token numbers stay in a row under the context tube instead of stacking one per line. Gemini meters no longer break their labels.
+
 ## 0.5.11 (2026-11-07)
 
 - New `24h` battery: it starts each 24 hours full and drains as you use your share of the weekly limit, the share that makes the week last until it resets. Past the share the number goes negative and the empty battery blinks red. Stats shows the detail in points of the week.

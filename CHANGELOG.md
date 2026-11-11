@@ -1,5 +1,10 @@
 # FunMeter changelog
 
+## 0.5.15 (2026-11-11)
+
+- The daily battery is now one of seven per week (1/7 of the weekly limit = 100%) and turns over at local midnight instead of in 24h blocks from the reset. What is left carries into the next day (the battery goes above 100% and glows gold while the extra lasts); going past the day goes negative and is taken from tomorrow. The label reads "Energy" (it shrinks to fit) and nothing is stored anymore.
+- Agent boxes (Gemini, Codex) show only what this run spent: the quota is read before the first call to that agent and again after each call, and the box shows the difference. A small ✕ closes the box; the next call starts a new run. Each agent gets a random sci-fi codename per run (never the same as the other's); the box color still tells them apart (blue Gemini, teal Codex).
+
 ## 0.5.14 (2026-11-08)
 
 - Agent boxes are compact: a tinted background instead of a border, so each takes one line, and smaller meters so Gemini and Codex fit side by side. "Skills: none" is hidden when no skill was used.

@@ -133,6 +133,50 @@ test('sessions share one quota read and agy runs without its updater', async ($,
   expect(rodou.length).toBe(1)
 })
 
+test('agent boxes show only what this run of Gemini spent, and the ✕ closes them', async ($, on) => {
+  let resta = 0.8 // o Gemini já tinha 20% da semana gasto antes
+  let arquivo: string | undefined
+  mock.clock(on)
+  on('turn.complete', (_$: any, e: any) => ({ text: 'ok', usage: e.usage }))
+  on('session.measure', (_$: any, e: any) => ({ changed: e.changed }))
+  on('ui.render', ($$: any, e: any) => { const { Box } = $$.ui.resolve(e); return <Box key="engine" /> })
+  on('env.get', async () => ({ value: 'C:/Users/teste' }) as any)
+  on('fs.read', async () => ({ value: arquivo }) as any)
+  on('fs.write', async (_: any, e: any) => {
+    arquivo = e.text
+    return { value: undefined } as any
+  })
+  on('fs.list', async () => ({ value: [] }) as any)
+  on('process.run', async () => ({ value: { exitCode: 0, stdout: `{"command":{"data":{"groups":[{"name":"Gemini Models","buckets":[{"window":"weekly","remaining_fraction":${resta}}]}]}}}`, stderr: '' } }) as any)
+  on('tool.call', async (_: any, e: any) => {
+    if (e.tool === 'mcp__gemini__gemini_run') resta = 0.65 // a rodada gastou 15%
+    return { result: 'ok', text: 'ok' } as any
+  })
+  await estado($)
+  const caixa = async () => {
+    const ui = await $.ui.mount({ plugin: 'funmeter', surface: 'desktop', component: 'AbovePrompt', props: PROPS })
+    return { ui, gemini: await ui.find({ key: 'agente-Gemini' }), textos: ((await ui.findAll({ type: 'Text' })) as any[]).map(x => x.text) }
+  }
+  let v = await caixa()
+  expect(v.gemini).toBeUndefined() // sem agente usado, nada de caixinha
+  await v.ui.unmount()
+  await $.tool.call({ tool: 'Read', file_path: 'C:/x.txt' } as any)
+  v = await caixa()
+  expect(v.gemini).toBeUndefined() // ferramenta comum não abre rodada
+  await v.ui.unmount()
+  await $.tool.call({ tool: 'mcp__gemini__gemini_run', prompt: 'oi' } as any)
+  await new Promise(r => setTimeout(r, 30))
+  v = await caixa()
+  expect(v.gemini).toBeDefined()
+  expect(v.textos).toContain('15%')
+  expect(v.textos).not.toContain('35%')
+  await v.ui.press({ key: 'fechar-Gemini' })
+  await v.ui.unmount()
+  v = await caixa()
+  expect(v.gemini).toBeUndefined()
+  await v.ui.unmount()
+})
+
 test('an hour after the last reply the warning shows, and a new reply clears it', async ($, on) => {
   on('turn.complete', (_$, e: any) => ({ text: 'ok', usage: e.usage }))
   on('session.measure', (_$, e: any) => ({ changed: e.changed }))
@@ -427,81 +471,77 @@ test('handoff says so when the old session is still there after deleting', async
   expect(r.avisos).not.toContain('Handoff sent; old session deleted')
 })
 
-// ---- cota de 24h do limite semanal
-const AGORA = Date.parse('2026-11-07T12:00:00Z')
-const DIA = 86400000
+// ---- bateria do dia: 1/7 da semana, vira à meia-noite local e leva o saldo para o dia seguinte
+// Os horários são locais (new Date(ano, mês, ...)) para a meia-noite cair no lugar certo em qualquer fuso.
+const local = (dia: number, hora: number, min = 0) => new Date(2026, 10, dia, hora, min).getTime()
+const AGORA = local(7, 12)
 
-async function comCotaDia($: any, on: any, salvo?: unknown) {
+async function comCotaDia($: any, on: any) {
   on('turn.complete', (_$: any, e: any) => ({ text: 'ok', usage: e.usage }))
   on('session.measure', (_$: any, e: any) => ({ changed: e.changed }))
   on('ui.render', ($$: any, e: any) => { const { Box } = $$.ui.resolve(e); return <Box key="engine" /> })
-  const guardado: Record<string, unknown> = salvo ? { hoje: salvo } : {}
-  on('store.get', async (_: any, e: any) => ({ value: guardado[e.key] }) as any)
-  on('store.set', async (_: any, e: any) => {
-    guardado[e.key] = e.value
-    return { value: undefined } as any
-  })
   const relogio = mock.clock(on, { now: AGORA })
   await estado($)
   const semana = (percentUsed: number, resetsAt: number) =>
     $.session.measure({ context: { tokens: 1000, window: 200000, percent: 1 }, rateLimits: [{ kind: 'seven_day', percentUsed, resetsAt: new Date(resetsAt).toISOString() }], changed: [] })
-  const ve = async (texto: string | null) => {
+  const ve = async (texto: string | null): Promise<string | undefined> => {
     const ui = await $.ui.mount({ plugin: 'funmeter', surface: 'desktop', component: 'AbovePrompt', props: PROPS })
     const fontes: string[] = await fontesDe(ui)
-    const rotulo = fontes.find(f => f.includes('>24h '))?.match(/>(24h -?[0-9]+%)</)?.[1] ?? null
+    const svg = fontes.find(f => f.includes('>Energy '))
+    const rotulo = svg?.match(/>(Energy -?[0-9]+%)</)?.[1] ?? null
     expect(rotulo).toBe(texto)
     await ui.unmount()
+    return svg
   }
-  return { guardado, relogio, semana, ve }
+  return { relogio, semana, ve }
 }
 
-test('the daily quota divides what is left of the week and stays fixed through the 24h block', async ($, on) => {
+test('what is left today is added to tomorrow, and the battery turns gold above 100%', async ($, on) => {
   const { relogio, semana, ve } = await comCotaDia($, on)
-  const reinicio = AGORA + 4.5 * DIA
-  await semana(39, reinicio)
-  await ve('24h 100%') // cota: 61% em 4,5 dias = 13,6%
-  await semana(44, reinicio)
-  await ve('24h 63%')
-  await semana(60, reinicio)
-  await ve('24h -55%') // passou da cota: o número fica negativo
-  await relogio.advance(0.5 * DIA + 60000) // começou o bloco seguinte
-  await semana(60, reinicio)
-  await ve('24h 100%')
-  await semana(65, reinicio)
-  await ve('24h 50%') // cota: 40% em 4 dias = 10%
+  const reinicio = local(14, 10) // semana começou hoje às 10h
+  await semana(0, reinicio)
+  expect(await ve('Energy 100%')).not.toContain('#FFD86B')
+  await semana(10, reinicio)
+  await ve('Energy 30%') // 10% de 14,3%
+  await relogio.advance(local(8, 0, 1) - AGORA) // passou da meia-noite
+  await semana(10, reinicio)
+  const dourada = (await ve('Energy 130%')) ?? ''
+  expect(dourada).toContain('#FFD86B') // sobraram 30%: dourada
+  // nenhuma tag com o mesmo atributo duas vezes (comFase põe begin em cada <animate>; um segundo deixa o SVG inválido)
+  for (const tag of dourada.match(/<[a-zA-Z][^>]*>/g) ?? []) {
+    const nomes = [...tag.matchAll(/\s([a-zA-Z:-]+)=/g)].map(m => m[1])
+    expect(new Set(nomes).size).toBe(nomes.length)
+  }
+  await semana(15, reinicio)
+  expect(await ve('Energy 95%')).not.toContain('#FFD86B') // gastou o extra: volta ao normal
 })
 
-test('the last day gets everything left, and a new week starts over', async ($, on) => {
+test('going past the day borrows from tomorrow', async ($, on) => {
   const { relogio, semana, ve } = await comCotaDia($, on)
-  const reinicio = AGORA + 0.5 * DIA
-  await semana(80, reinicio)
-  await ve('24h 100%')
-  await semana(90, reinicio)
-  await ve('24h 50%') // cota: os 20% que sobraram
-  await relogio.advance(0.5 * DIA + 60000)
-  await semana(2, reinicio + 7 * DIA)
-  await ve('24h 100%')
-  await semana(9, reinicio + 7 * DIA)
-  await ve('24h 50%') // cota: 98% em quase 7 dias = 14%
+  const reinicio = local(14, 10)
+  await semana(20, reinicio)
+  await ve('Energy -40%') // passou da cota: negativo
+  await relogio.advance(local(8, 0, 1) - AGORA)
+  await semana(20, reinicio)
+  await ve('Energy 60%') // os 40% que faltaram saem do dia seguinte
 })
 
-test('a new session keeps counting the same 24h block from the store', async ($, on) => {
-  const reinicio = AGORA + 2.5 * DIA
-  const chave = Math.round((AGORA + 0.5 * DIA) / 300000)
-  const { semana, ve, guardado } = await comCotaDia($, on, { chave, inicio: 50, cota: 20 })
-  await semana(57, reinicio)
-  await ve('24h 65%')
-  expect((guardado.hoje as any).inicio).toBe(50)
+test('a day in the middle of the week counts every day before it', async ($, on) => {
+  const { semana, ve } = await comCotaDia($, on)
+  await semana(60, local(10, 15)) // começou dia 3 às 15h: hoje é o 5º dia, liberados 5/7 = 71,4%
+  await ve('Energy 80%')
 })
 
-test('the daily quota stays hidden without a weekly reset time', async ($, on) => {
+test('the last partial day only has what is left of the week', async ($, on) => {
+  const { semana, ve } = await comCotaDia($, on)
+  await semana(90, local(7, 18)) // começou dia 31/10 às 18h: hoje é o 8º dia do calendário
+  await ve('Energy 70%')
+  await semana(100, local(7, 18))
+  await ve('Energy 0%')
+})
+
+test('the daily battery stays hidden without a weekly reset time', async ($, on) => {
   const { ve } = await comCotaDia($, on)
   await $.session.measure({ context: { tokens: 1000, window: 200000, percent: 1 }, rateLimits: [{ kind: 'seven_day', percentUsed: 39 }], changed: [] })
   await ve(null)
-})
-
-test('with the week used up the daily battery shows empty instead of dividing by zero', async ($, on) => {
-  const { semana, ve } = await comCotaDia($, on)
-  await semana(100, AGORA + 2 * DIA)
-  await ve('24h 0%')
 })

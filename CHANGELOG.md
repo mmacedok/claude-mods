@@ -1,5 +1,10 @@
 # FunMeter changelog
 
+## 0.5.17 (2026-11-12)
+
+- Spacing pass on the band. The buttons moved out of the column that held the limit tubes into a footer row (agent boxes and skills on the left, buttons on the right): they are wider than the tubes and left a hole between the context tube and the vials. The context tube now runs all the way to the vials.
+- The numbers under the tube are two lines by meaning instead of one that wrapped wherever it ran out of room: token types first, then cache hit, cost, speed and the 5h reset.
+
 ## 0.5.16 (2026-11-12)
 
 - Art pass on the limit tubes and the daily battery. The 5h and weekly tubes are now glass vials with a rounded bottom, brushed-metal caps, measure marks, a long glass reflection and gel with volume (cylinder shading, a second wave behind, a lit surface line, rising bubbles) that casts a soft glow, pulsing from 80%. The drop grows on the nozzle, stretches as it falls and splashes: a ripple and two uneven droplets.

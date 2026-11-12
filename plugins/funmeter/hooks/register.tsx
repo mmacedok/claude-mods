@@ -1943,7 +1943,11 @@ export const register: Register = on => {
             <Svg source={mascote(modo)} alt="Claude mascot" width={COLUNAS * CEL} height={LINHAS * CEL} />
           </Box>
         )}
-      <Box flexDirection="column" flexGrow={1}>
+      {/* À direita do mascote: em cima as medidas e os frascos, embaixo um rodapé com os agentes e os botões.
+          Os botões são mais largos que os frascos; na mesma coluna deixavam um buraco entre o tubo e os frascos. */}
+      <Box key="corpo" flexDirection="column" flexGrow={1} flexShrink={1} minWidth={0} rowGap={1}>
+      <Box key="cima" flexDirection="row" columnGap={2} alignItems="center">
+      <Box key="medidas" flexDirection="column" flexGrow={1} flexShrink={1} minWidth={0}>
         <Box flexDirection="row" gap={1} alignItems="center">
           {Svg ? (
             <Box key="tubo" flexGrow={1} flexShrink={1} minWidth={0}>
@@ -1973,6 +1977,9 @@ export const register: Register = on => {
                   <Text dimColor>/{num(t[x.campo])}</Text>
                 </Text>
               ))}
+            </Box>
+            {/* Segunda linha: o que se mede da conversa (acerto do cache, custo, velocidade, quando o limite volta). */}
+            <Box key="metricas" flexDirection="row" flexWrap="wrap" columnGap={2}>
               {acerto(t) !== null && (
                 <Text>
                   <Text dimColor>hit</Text>{' '}
@@ -1995,7 +2002,17 @@ export const register: Register = on => {
                 </Text>
               )}
             </Box>
-            <Box flexDirection="row" flexWrap="wrap" columnGap={1} alignItems="center">
+      </Box>
+          {Svg && (cincoHoras || semana) && (
+            <Box key="tubos-limite" flexDirection="row" alignItems="center" flexShrink={0}>
+              {cincoHoras && <Svg source={comFase(`${sid}:5h`, tuboVertical('5h', cincoHoras.percentUsed), agora)} alt={`5 hour limit ${cincoHoras.percentUsed}%`} width={VT_W} height={VT_H} />}
+              {bateriaHoje !== null && <Svg source={comFase(`${sid}:24h`, bateria('Energy', bateriaHoje), agora)} alt={`Today's battery (1/7 of the weekly limit, carried over at midnight): ${Math.round(bateriaHoje)}%`} width={VT_W} height={VT_H} />}
+              {semana && <Svg source={comFase(`${sid}:wk`, tuboVertical('wk', semana.percentUsed), agora)} alt={`Weekly limit ${semana.percentUsed}%`} width={VT_W} height={VT_H} />}
+            </Box>
+          )}
+      </Box>
+      <Box key="rodape" flexDirection="row" columnGap={2} alignItems="center" justifyContent="space-between">
+            <Box key="agentes" flexDirection="row" flexWrap="wrap" columnGap={1} alignItems="center" flexGrow={1} flexShrink={1} minWidth={0}>
               {/* Uma caixinha por agente usado nesta rodada, só com o que ele gastou desde a medição de antes; o ✕ fecha. */}
               {[
                 { nome: 'Gemini', cor: AZUL, fundo: '#1A2738', lista: plano as Cota[] },
@@ -2022,17 +2039,7 @@ export const register: Register = on => {
                 ))}
               {usadas.length > 0 && <Text dimColor wrap="truncate-end">Skills: {listaSkills}</Text>}
             </Box>
-      </Box>
-      {/* Tubos e botões numa coluna à direita: assim os números ficam em linha sob o tubo de contexto. */}
-      <Box key="lado" flexDirection="column" flexShrink={0} alignItems="flex-end" rowGap={1}>
-          {Svg && (cincoHoras || semana) && (
-            <Box key="tubos-limite" flexDirection="row" alignItems="center">
-              {cincoHoras && <Svg source={comFase(`${sid}:5h`, tuboVertical('5h', cincoHoras.percentUsed), agora)} alt={`5 hour limit ${cincoHoras.percentUsed}%`} width={VT_W} height={VT_H} />}
-              {bateriaHoje !== null && <Svg source={comFase(`${sid}:24h`, bateria('Energy', bateriaHoje), agora)} alt={`Today's battery (1/7 of the weekly limit, carried over at midnight): ${Math.round(bateriaHoje)}%`} width={VT_W} height={VT_H} />}
-              {semana && <Svg source={comFase(`${sid}:wk`, tuboVertical('wk', semana.percentUsed), agora)} alt={`Weekly limit ${semana.percentUsed}%`} width={VT_W} height={VT_H} />}
-            </Box>
-          )}
-          <Box flexDirection="row" columnGap={1} flexShrink={0} alignSelf="flex-end">
+          <Box flexDirection="row" columnGap={1} flexShrink={0}>
             <Button key="mods" label="Mods" onPress={() => $.ui.open({ id: "mods", title: "Mods" })} />
             <Button key="stats" label="Stats" onPress={() => void alternarStats($)} />
             <Button key="clear" label="Clear" onPress={() => limpar($)} />
@@ -2043,6 +2050,7 @@ export const register: Register = on => {
               onPress={() => handoff($)}
             />
           </Box>
+      </Box>
       </Box>
       </Box>
       </Box>

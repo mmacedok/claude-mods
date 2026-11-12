@@ -1,5 +1,11 @@
 # FunMeter changelog
 
+## 0.5.16 (2026-11-12)
+
+- Art pass on the limit tubes and the daily battery. The 5h and weekly tubes are now glass vials with a rounded bottom, brushed-metal caps, measure marks, a long glass reflection and gel with volume (cylinder shading, a second wave behind, a lit surface line, rising bubbles) that casts a soft glow, pulsing from 80%. The drop grows on the nozzle, stretches as it falls and splashes: a ripple and two uneven droplets.
+- The battery has a metal case and terminal, charge that reads as light (a sheen climbing through it, a lit top line, cell dividers), a lightning bolt with a breathing glow (a red outline when empty), a real blurred halo in gold or red instead of a stroke, sparkles that grow and shrink, and a pink number when negative. The "Energy" label no longer loses the tail of the g.
+- The context tube got brushed-metal rings with grooves, glass that darkens into each ring, measure marks at 25, 50 and 75% of the window and a softer reflection.
+
 ## 0.5.15 (2026-11-11)
 
 - The daily battery is now one of seven per week (1/7 of the weekly limit = 100%) and turns over at local midnight instead of in 24h blocks from the reset. What is left carries into the next day (the battery goes above 100% and glows gold while the extra lasts); going past the day goes negative and is taken from tomorrow. The label reads "Energy" (it shrinks to fit) and nothing is stored anymore.

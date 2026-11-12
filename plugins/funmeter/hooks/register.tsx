@@ -957,20 +957,27 @@ function tubo(fCru: Fatias, janelaCrua: number, larguraCrua: number): string {
     `<clipPath id="mistura"><path d="${contorno(xMistura, 0, 11)}"/></clipPath>` +
     `<clipPath id="dentro"><rect ${interno}/></clipPath>` +
     `<clipPath id="cheio"><rect x="${x0}" y="0" width="${Math.max(0, fim - x0 - 3).toFixed(1)}" height="${H}"/></clipPath>` +
-    `<linearGradient id="metal" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#dfe5e8"/><stop offset=".5" stop-color="#8d979d"/><stop offset="1" stop-color="#4c5459"/></linearGradient>` +
+    `<linearGradient id="metal" x1="0" x2="0" y1="0" y2="1">${METAL}</linearGradient>` +
+    `<linearGradient id="entra" x1="0" x2="1"><stop offset="0" stop-color="#000" stop-opacity=".5"/><stop offset="1" stop-color="#000" stop-opacity="0"/></linearGradient>` +
+    `<linearGradient id="sai" x1="0" x2="1"><stop offset="0" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".5"/></linearGradient>` +
     `<filter id="macio" x="-5%" y="-100%" width="110%" height="300%"><feGaussianBlur stdDeviation=".7"/></filter>` +
     `<linearGradient id="vidro" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#bcd8e6" stop-opacity=".1"/><stop offset=".55" stop-color="#0e1419" stop-opacity=".35"/><stop offset="1" stop-color="#bcd8e6" stop-opacity=".07"/></linearGradient>` +
-    `<linearGradient id="reflexo" x1="0" x2="1"><stop offset="0" stop-color="#fff" stop-opacity=".62"/><stop offset=".6" stop-color="#fff" stop-opacity=".28"/><stop offset="1" stop-color="#fff" stop-opacity=".5"/></linearGradient>` +
+    `<linearGradient id="reflexo" x1="0" x2="1"><stop offset="0" stop-color="#fff" stop-opacity=".55"/><stop offset=".6" stop-color="#fff" stop-opacity=".2"/><stop offset="1" stop-color="#fff" stop-opacity=".4"/></linearGradient>` +
     `<linearGradient id="clarao" x1="0" x2="1"><stop offset="0" stop-color="#fff" stop-opacity="0"/><stop offset=".5" stop-color="#fff" stop-opacity=".55"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>` +
     `</defs>` +
     `<rect ${casca} fill="url(#vidro)"/>` +
     `<g clip-path="url(#dentro)">${geis}<g clip-path="url(#mistura)">${gotas}</g><g clip-path="url(#cheio)"><g class="br">${brilhos.join('')}</g>${bolhas}</g></g>` +
     `<path d="M${x0 - 3} 1.5H${x0 + L + 3}M${x0 - 3} ${H - 1.5}H${x0 + L + 3}" fill="none" stroke="#c4dbe6" stroke-opacity=".55"/>` +
-    `<rect x="${x0}" y="3" width="${L}" height="3" fill="url(#reflexo)" filter="url(#macio)"/>` +
+    // o vidro escurece ao entrar em cada anel, e tem marcas de medida a 25, 50 e 75% da janela
+    `<rect x="${x0}" y="${PAREDE}" width="14" height="${H - 2 * PAREDE}" fill="url(#entra)"/><rect x="${x0 + L - 14}" y="${PAREDE}" width="14" height="${H - 2 * PAREDE}" fill="url(#sai)"/>` +
+    `<path d="${[0.25, 0.5, 0.75].map(p => `M${(x0 + L * p).toFixed(1)} ${H - PAREDE}v-${p === 0.5 ? 6 : 4}`).join('')}" stroke="#fff" stroke-opacity=".3" fill="none"/>` +
+    `<rect x="${x0}" y="3.2" width="${L}" height="2.4" fill="url(#reflexo)" filter="url(#macio)"/>` +
     `<rect x="${x0}" y="${H - 4.2}" width="${L}" height="1.2" fill="#fff" fill-opacity=".14" filter="url(#macio)"/>` +
         `<g clip-path="url(#dentro)"><path class="gl" d="M0 ${H}L16 0h34L34 ${H}z" fill="url(#clarao)"/></g>` +
     `<rect width="${TAMPA}" height="${H}" rx="1.5" fill="url(#metal)"/><rect x="${TAMPA - 1.5}" width="1.5" height="${H}" fill="#2b3135" fill-opacity=".7"/>` +
     `<rect x="${W - TAMPA}" width="${TAMPA}" height="${H}" rx="1.5" fill="url(#metal)"/><rect x="${W - TAMPA}" width="1.5" height="${H}" fill="#2b3135" fill-opacity=".7"/>` +
+    // frisos nos anéis
+    `<path d="M2.5 1V${H - 1}M5 1V${H - 1}M${W - 2.5} 1V${H - 1}M${W - 5} 1V${H - 1}" stroke="#14191d" stroke-opacity=".38" stroke-width=".8" fill="none"/>` +
     `</svg>`
   )
 }
@@ -986,7 +993,7 @@ const barrinha = (usado: number, cor = AZUL) =>
 // O Codex (plano ChatGPT) tem a sua cor: um verde-água que não se confunde com os géis nem com o azul do Gemini.
 const VERDE_AGUA = '#2DD4BF'
 
-// Os tubos verticais dos limites do Claude (5h e semana): uma gota cai do bico e o gel acumula no fundo.
+// Os frascos dos limites do Claude (5h e semana) e a bateria do dia: mesmo tamanho, mesmo vidro e mesmo metal.
 const VT_W = 58
 const VT_H = 74
 
@@ -1005,47 +1012,128 @@ function corDoUso(pct: number): string {
   return `#${canal(0)}${canal(8)}${canal(4)}`
 }
 
+// Metal em cilindro: borda escura, faixa de luz, meio-tom, sombra e um fio de luz do outro lado.
+const METAL =
+  '<stop offset="0" stop-color="#59636a"/><stop offset=".2" stop-color="#f3f7f9"/><stop offset=".48" stop-color="#9ba6ac"/>' +
+  '<stop offset=".82" stop-color="#434c52"/><stop offset="1" stop-color="#77848b"/>'
+// Reflexo comprido do vidro: nasce forte em cima e some antes do fundo.
+const REFLEXO_VIDRO =
+  '<linearGradient id="e" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity="0"/><stop offset=".12" stop-color="#fff" stop-opacity=".75"/>' +
+  '<stop offset=".6" stop-color="#fff" stop-opacity=".26"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>'
+// Desfoques em coordenadas do desenho: a área não depende do tamanho da forma, então um halo fino não sai cortado.
+const DESFOQUES =
+  `<filter id="b" filterUnits="userSpaceOnUse" x="0" y="0" width="${VT_W}" height="${VT_H}"><feGaussianBlur stdDeviation="3.2"/></filter>` +
+  `<filter id="h" filterUnits="userSpaceOnUse" x="0" y="0" width="${VT_W}" height="${VT_H}"><feGaussianBlur stdDeviation="1.6"/></filter>`
+// Vai e volta com aceleração suave. A defasagem entre animações vem sempre dos valores e das durações, nunca de begin:
+// comFase já põe um begin em cada <animate>, e dois deixam o SVG inválido.
+const SUAVE = 'calcMode="spline" keyTimes="0;.5;1" keySplines=".45 0 .55 1;.45 0 .55 1"'
+const n1 = (v: number) => v.toFixed(1)
+const vaivem = (forma: (a: number) => string, a: number, dur: number) =>
+  `<animate attributeName="d" dur="${dur}s" repeatCount="indefinite" ${SUAVE} values="${forma(a)};${forma(-a)};${forma(a)}"/>`
+const pecaDeMetal = (x: number, y: number, w: number, h: number) =>
+  `<rect x="${x}" y="${y}" width="${w}" height="${n1(h)}" rx="1.8" fill="url(#m)"/>` +
+  `<rect x="${x + 1}" y="${n1(y + 0.6)}" width="${w - 2}" height=".9" rx=".45" fill="#fff" fill-opacity=".5"/>` +
+  `<rect x="${x + 0.5}" y="${n1(y + h - 1.3)}" width="${w - 1}" height="1.3" rx=".6" fill="#14191d" fill-opacity=".5"/>`
+const rotuloDoFrasco = (texto: string, tamanho: number, cor: string, base = VT_H - 1) =>
+  `<text x="${VT_W / 2}" y="${base}" text-anchor="middle" font-size="${tamanho}" font-weight="600" font-family="system-ui,sans-serif" fill="${cor}">${texto}</text>`
+// O líquido tem volume: sombreado de cilindro na horizontal e, por cima, claro junto à superfície e escuro no fundo.
+const corDoLiquido = (cor: string, nivel: number, fundo: number, sombra = -0.6) =>
+  `<linearGradient id="g" x1="0" x2="1" y1="0" y2="0"><stop offset="0" stop-color="${tom(cor, -0.3)}"/><stop offset=".28" stop-color="${tom(cor, 0.4)}"/>` +
+  `<stop offset=".55" stop-color="${cor}"/><stop offset="1" stop-color="${tom(cor, sombra)}"/></linearGradient>` +
+  `<linearGradient id="p" gradientUnits="userSpaceOnUse" x1="0" x2="0" y1="${n1(Math.min(nivel, fundo - 1))}" y2="${fundo}"><stop offset="0" stop-color="#fff" stop-opacity=".3"/>` +
+  `<stop offset=".3" stop-color="#fff" stop-opacity="0"/><stop offset=".6" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".38"/></linearGradient>`
+
+// Frasco de vidro com fundo arredondado: uma gota cresce no bico, cai acelerando e respinga no gel, que brilha e solta bolhas.
 function tuboVertical(rotulo: string, usado: number): string {
   const pct = Math.max(0, Math.min(100, Math.round(Number.isFinite(usado) ? usado : 0)))
   const cor = corDoUso(pct)
-  const xE = 18
-  const xD = 40
+  const xE = 17
+  const xD = 41
   const cx = (xE + xD) / 2
   const yT = 6
   const yB = 56
+  const R = 4
   const nivel = yB - (pct / 100) * (yB - yT)
-  const onda = (a: number) => `M${xE} ${(nivel + a).toFixed(1)}Q${xE + 3} ${(nivel + a - 1.4).toFixed(1)} ${cx} ${nivel.toFixed(1)}T${xD} ${(nivel - a).toFixed(1)}V${yB}H${xE}Z`
-  const gel =
-    pct > 0
-      ? `<path fill="url(#g)" d="${onda(0.7)}"><animate attributeName="d" dur="3s" repeatCount="indefinite" values="${onda(0.7)};${onda(-0.7)};${onda(0.7)}"/></path>`
-      : ''
-  // com o gel quase no bico (97 a 99%) a gota não pode subir: o ponto de saída nunca fica abaixo do nível
-  const bico = Math.min(yT + 1, nivel)
-  const saida = Math.min(yT + 1.6, nivel)
-  // a gota nasce no bico, cai acelerando e, ao tocar o gel, abre uma ondinha na superfície
+  const altura = yB - nivel
+  const vidro = `M${xE} ${yT}V${yB - R}Q${xE} ${yB} ${xE + R} ${yB}H${xD - R}Q${xD} ${yB} ${xD} ${yB - R}V${yT}`
+  const crista = (a: number) => `M${xE} ${n1(nivel + a)}Q${xE + 6} ${n1(nivel + a - 1.6)} ${cx} ${n1(nivel)}T${xD} ${n1(nivel - a)}`
+  const corpo = (a: number) => `${crista(a)}V${yB}H${xE}Z`
+  // a onda de trás fica um pouco acima e em outro ritmo: dá profundidade à superfície
+  const tras = (a: number) => `M${xE} ${n1(nivel - 0.9 + a)}Q${xE + 6} ${n1(nivel - 0.9 + a + 1.6)} ${cx} ${n1(nivel - 0.9)}T${xD} ${n1(nivel - 0.9 - a)}V${yB}H${xE}Z`
+
+  // A gota pende do bico crescendo a partir da ponta, solta-se, estica na queda e mergulha atrás da onda da frente.
+  const T = 2.6
+  const y0 = yT + 1.2
+  const yFim = Math.max(y0, nivel - 4)
   const gota =
     pct < 100
-      ? `<ellipse cx="${cx}" cy="${bico.toFixed(1)}" rx="2" ry="2.8" fill="${cor}">` +
-        `<animate attributeName="cy" dur="2.2s" repeatCount="indefinite" calcMode="spline" keyTimes="0;.35;.85;1" keySplines="0 0 1 1;.55 0 1 .6;0 0 1 1" values="${bico.toFixed(1)};${saida.toFixed(1)};${nivel.toFixed(1)};${nivel.toFixed(1)}"/>` +
-        `<animate attributeName="opacity" dur="2.2s" repeatCount="indefinite" keyTimes="0;.1;.85;.86;1" values="0;1;1;0;0"/></ellipse>` +
-        `<ellipse cx="${cx}" cy="${nivel.toFixed(1)}" rx="0" ry=".8" fill="none" stroke="${tom(cor, 0.5)}" stroke-width="1">` +
-        `<animate attributeName="rx" dur="2.2s" repeatCount="indefinite" keyTimes="0;.85;1" values="0;0;9"/>` +
-        `<animate attributeName="opacity" dur="2.2s" repeatCount="indefinite" keyTimes="0;.85;.87;1" values="0;0;.9;0"/></ellipse>`
+      ? `<g><animateTransform attributeName="transform" type="translate" dur="${T}s" repeatCount="indefinite" calcMode="spline" keyTimes="0;.42;.8;1" keySplines="0 0 1 1;.6 0 1 .75;0 0 1 1" values="${cx} ${n1(y0)};${cx} ${n1(y0)};${cx} ${n1(yFim)};${cx} ${n1(yFim)}"/>` +
+        `<path d="M0 0C.9 1.6 2 3 2 4.2A2 2 0 1 1 -2 4.2C-2 3 -.9 1.6 0 0Z" fill="${tom(cor, 0.22)}">` +
+        `<animateTransform attributeName="transform" type="scale" dur="${T}s" repeatCount="indefinite" keyTimes="0;.42;.8;.81;1" values="0 0;1 1;.8 1.3;0 0;0 0"/></path></g>`
       : ''
+  // No impacto: uma ondinha abre na superfície e dois respingos saltam em arco.
+  const impacto =
+    pct < 100
+      ? `<ellipse cx="${cx}" cy="${n1(nivel)}" rx="0" ry="1" fill="none" stroke="${tom(cor, 0.7)}" stroke-width=".9" opacity="0">` +
+        `<animate attributeName="rx" dur="${T}s" repeatCount="indefinite" keyTimes="0;.8;1" values="0;0;10"/>` +
+        `<animate attributeName="opacity" dur="${T}s" repeatCount="indefinite" keyTimes="0;.8;.82;1" values="0;0;.95;0"/></ellipse>` +
+        [
+          { dx: -6, sobe: 6, r: 0.9 },
+          { dx: 4.5, sobe: 3.5, r: 0.7 },
+        ]
+          .map(
+            s =>
+              `<circle cx="${cx}" cy="${n1(nivel)}" r="${s.r}" fill="${tom(cor, 0.5)}" opacity="0">` +
+              `<animate attributeName="cx" dur="${T}s" repeatCount="indefinite" keyTimes="0;.8;1" values="${cx};${cx};${cx + s.dx}"/>` +
+              `<animate attributeName="cy" dur="${T}s" repeatCount="indefinite" calcMode="spline" keyTimes="0;.8;.9;1" keySplines="0 0 1 1;0 .6 .4 1;.6 0 1 .4" values="${n1(nivel)};${n1(nivel)};${n1(nivel - s.sobe)};${n1(nivel + 1)}"/>` +
+              `<animate attributeName="opacity" dur="${T}s" repeatCount="indefinite" keyTimes="0;.8;.81;.97;1" values="0;0;1;1;0"/></circle>`,
+          )
+          .join('')
+      : ''
+  // Bolhas sobem do fundo até a superfície; cada uma espera um pouco diferente antes de sair.
+  const bolha = (x: number, r: number, dur: number, k: number) =>
+    `<circle cx="${x}" cy="${yB - 2}" r="${r}" fill="#fff" opacity="0">` +
+    `<animate attributeName="cy" dur="${dur}s" repeatCount="indefinite" keyTimes="0;${k.toFixed(2)};1" values="${yB - 2};${yB - 2};${n1(nivel + 2)}"/>` +
+    `<animate attributeName="opacity" dur="${dur}s" repeatCount="indefinite" keyTimes="0;${k.toFixed(2)};${(k + 0.06).toFixed(2)};.93;1" values="0;0;.65;.65;0"/></circle>`
+  const bolhas = altura > 12 ? bolha(xE + 6, 1, 3.4, 0.1) + bolha(cx + 2, 0.8, 4.6, 0.35) + bolha(xD - 5, 1.2, 5.8, 0.2) : ''
+  const gel =
+    pct > 0
+      ? `<path fill="${tom(cor, -0.38)}" d="${tras(1)}">${vaivem(tras, 1, 4)}</path>` +
+        gota +
+        `<path fill="url(#g)" d="${corpo(0.8)}">${vaivem(corpo, 0.8, 3)}</path>` +
+        `<path fill="url(#p)" d="${corpo(0.8)}">${vaivem(corpo, 0.8, 3)}</path>` +
+        bolhas +
+        `<path fill="none" stroke="${tom(cor, 0.62)}" stroke-width="1.1" stroke-linecap="round" d="${crista(0.8)}">${vaivem(crista, 0.8, 3)}</path>`
+      : gota
+  // O gel ilumina o que está em volta; perto do limite (80%) a luz pulsa.
+  const alerta = pct >= 80
+  const luz =
+    pct > 0
+      ? `<rect x="${xE}" y="${n1(nivel)}" width="${xD - xE}" height="${n1(altura)}" rx="3" fill="${cor}" opacity="${alerta ? 0.6 : 0.42}" filter="url(#b)">` +
+        (alerta ? `<animate attributeName="opacity" dur="1.6s" repeatCount="indefinite" ${SUAVE} values=".3;.85;.3"/>` : '') +
+        `</rect>`
+      : ''
+  const marcas = [0.25, 0.5, 0.75].map(f => `M${xD - (f === 0.5 ? 7 : 4.5)} ${n1(yB - f * (yB - yT))}H${xD - 0.8}`).join('')
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" width="${VT_W}" height="${VT_H}" viewBox="0 0 ${VT_W} ${VT_H}">` +
-    `<defs><linearGradient id="g" x1="0" x2="1" y1="0" y2="0"><stop offset="0" stop-color="${tom(cor, 0.4)}"/><stop offset=".45" stop-color="${cor}"/><stop offset="1" stop-color="${tom(cor, -0.55)}"/></linearGradient>` +
-    `<linearGradient id="m" x1="0" x2="1" y1="0" y2="0"><stop offset="0" stop-color="#dfe5e8"/><stop offset=".5" stop-color="#8d979d"/><stop offset="1" stop-color="#4c5459"/></linearGradient>` +
-    `<linearGradient id="v" x1="0" x2="1" y1="0" y2="0"><stop offset="0" stop-color="#d6ecf7" stop-opacity=".34"/><stop offset=".55" stop-color="#0e1419" stop-opacity=".4"/><stop offset="1" stop-color="#d6ecf7" stop-opacity=".24"/></linearGradient>` +
-    `<clipPath id="d"><rect x="${xE}" y="${yT}" width="${xD - xE}" height="${yB - yT}"/></clipPath></defs>` +
-    `<rect x="${xE - 1.5}" y="${yT}" width="${xD - xE + 3}" height="${yB - yT}" fill="url(#v)"/>` +
-    `<g clip-path="url(#d)">${gel}${gota}</g>` +
-    `<path d="M${xE - 1.5} ${yT}V${yB}M${xD + 1.5} ${yT}V${yB}" stroke="#d6ecf7" stroke-opacity=".9" stroke-width="1.4" fill="none"/>` +
-    `<rect x="${xE + 1}" y="${yT}" width="2.4" height="${yB - yT}" fill="#fff" fill-opacity=".4"/>` +
-    `<rect x="${xE - 3}" y="0" width="${xD - xE + 6}" height="${yT}" rx="1" fill="url(#m)"/>` +
-    `<rect x="${cx - 1.5}" y="${yT}" width="3" height="1.4" fill="#4c5459"/>` +
-    `<rect x="${xE - 3}" y="${yB}" width="${xD - xE + 6}" height="${yT}" rx="1.5" fill="url(#m)"/>` +
-    `<text x="${VT_W / 2}" y="${VT_H - 1}" text-anchor="middle" font-size="13" font-weight="600" font-family="system-ui,sans-serif" fill="#ecece6">${rotulo} ${pct}%</text></svg>`
+    `<defs>${corDoLiquido(cor, nivel, yB)}` +
+    `<linearGradient id="m" x1="0" x2="1" y1="0" y2="0">${METAL}</linearGradient>` +
+    `<linearGradient id="v" x1="0" x2="1" y1="0" y2="0"><stop offset="0" stop-color="#cfe6f2" stop-opacity=".26"/><stop offset=".2" stop-color="#0b1116" stop-opacity=".5"/>` +
+    `<stop offset=".8" stop-color="#0b1116" stop-opacity=".58"/><stop offset="1" stop-color="#cfe6f2" stop-opacity=".18"/></linearGradient>` +
+    REFLEXO_VIDRO +
+    DESFOQUES +
+    `<clipPath id="d"><path d="${vidro}Z"/></clipPath></defs>` +
+    luz +
+    `<path d="${vidro}Z" fill="url(#v)"/>` +
+    `<g clip-path="url(#d)">${gel}${impacto}<path d="${marcas}" stroke="#fff" stroke-opacity=".32" stroke-width=".8" fill="none"/></g>` +
+    `<path d="${vidro}" fill="none" stroke="#d6ecf7" stroke-opacity=".75" stroke-width="1.2"/>` +
+    `<rect x="${xE + 2.2}" y="${yT + 2}" width="2.2" height="${yB - yT - 8}" rx="1.1" fill="url(#e)"/>` +
+    `<rect x="${xD - 3.4}" y="${yT + 5}" width="1" height="${yB - yT - 14}" rx=".5" fill="#fff" fill-opacity=".2"/>` +
+    pecaDeMetal(xE - 3.5, 0, xD - xE + 7, yT) +
+    `<path d="M${cx - 2.4} ${yT}h4.8l-1.2 1.6h-2.4z" fill="#394147"/>` +
+    pecaDeMetal(xE - 3.5, yB + 0.8, xD - xE + 7, 5.4) +
+    rotuloDoFrasco(`${rotulo} ${pct}%`, 13, '#ecece6') +
+    `</svg>`
   )
 }
 
@@ -1058,56 +1146,79 @@ function bateria(rotulo: string, restante: number): string {
   const numero = Math.round(Number.isFinite(restante) ? restante : 0) || 0
   const carga = Math.max(0, Math.min(100, numero))
   const dourada = numero > 100
+  const fraca = carga <= BATERIA_FRACA
   const cor = dourada ? OURO : corDoUso(100 - carga)
-  const xE = 18
-  const xD = 40
+  const xE = 17
+  const xD = 41
   const cx = (xE + xD) / 2
   const yT = 9
   const yB = 58
   const nivel = yB - (carga / 100) * (yB - yT)
-  const onda = (a: number) => `M${xE} ${(nivel + a).toFixed(1)}Q${xE + 3} ${(nivel + a - 1.4).toFixed(1)} ${cx} ${nivel.toFixed(1)}T${xD} ${(nivel - a).toFixed(1)}V${yB}H${xE}Z`
-  const gel =
+  const crista = (a: number) => `M${xE} ${n1(nivel + a)}Q${xE + 6} ${n1(nivel + a - 1.2)} ${cx} ${n1(nivel)}T${xD} ${n1(nivel - a)}`
+  const corpo = (a: number) => `${crista(a)}V${yB}H${xE}Z`
+  // A carga é luz, não líquido: superfície quase parada, uma faixa de claridade que sobe por ela e uma linha acesa no topo.
+  const energia =
     carga > 0
-      ? `<path fill="url(#g)" d="${onda(0.7)}"><animate attributeName="d" dur="3s" repeatCount="indefinite" values="${onda(0.7)};${onda(-0.7)};${onda(0.7)}"/></path>`
+      ? `<path fill="url(#g)" d="${corpo(0.6)}">${vaivem(corpo, 0.6, 3)}</path>` +
+        `<path fill="url(#p)" d="${corpo(0.6)}">${vaivem(corpo, 0.6, 3)}</path>` +
+        `<g clip-path="url(#c)"><rect x="${xE}" y="-12" width="${xD - xE}" height="12" fill="url(#s)">` +
+        `<animateTransform attributeName="transform" type="translate" dur="${dourada ? 2.2 : 3.6}s" repeatCount="indefinite" keyTimes="0;.55;1" values="0 ${yB + 12};0 ${n1(nivel)};0 ${n1(nivel)}"/></rect></g>` +
+        `<path fill="none" stroke="${tom(cor, 0.7)}" stroke-width="1.1" stroke-linecap="round" d="${crista(0.6)}">${vaivem(crista, 0.6, 3)}</path>`
       : ''
-  const marcas = [0.25, 0.5, 0.75]
-    .map(f => yB - f * (yB - yT))
-    .map(y => `<path d="M${xE} ${y}H${xD}" stroke="#0e1419" stroke-opacity=".45" stroke-width="1"/>`)
-    .join('')
+  const celulas = [0.25, 0.5, 0.75].map(f => `M${xE} ${n1(yB - f * (yB - yT))}H${xD}`).join('')
+  const formaDoRaio = `M${cx + 2} ${yT + 13}L${cx - 5} ${yT + 27}H${cx - 0.5}L${cx - 2} ${yT + 37}L${cx + 5} ${yT + 22}H${cx + 0.5}Z`
+  // O raio tem um clarão desfocado por trás que respira junto com ele; sem carga, sobra só o contorno vermelho.
   const raio =
     carga > 0
-      ? `<path d="M${cx + 2} ${yT + 13}L${cx - 5} ${yT + 27}H${cx - 0.5}L${cx - 2} ${yT + 37}L${cx + 5} ${yT + 22}H${cx + 0.5}Z" fill="#fff"><animate attributeName="opacity" dur="3s" repeatCount="indefinite" values=".5;.95;.5"/></path>`
-      : ''
-  const fraca = carga <= BATERIA_FRACA
-  const pisca = fraca ? '<animate attributeName="stroke-opacity" dur="1.2s" repeatCount="indefinite" values="1;.25;1"/>' : ''
-  // brilho dourado: halo pulsando em volta e estrelinhas piscando fora de fase.
-  // A defasagem vem dos valores e da duração, nunca de begin: comFase já põe um begin em cada <animate>, e dois deixam o SVG inválido.
-  const estrela = (x: number, y: number, r: number, valores: string, dur: number) =>
-    `<path d="M${x} ${y - r}L${x + r * 0.28} ${y - r * 0.28}L${x + r} ${y}L${x + r * 0.28} ${y + r * 0.28}L${x} ${y + r}L${x - r * 0.28} ${y + r * 0.28}L${x - r} ${y}L${x - r * 0.28} ${y - r * 0.28}Z" fill="#FFF6C8" opacity="0">` +
-    `<animate attributeName="opacity" dur="${dur}s" repeatCount="indefinite" values="${valores}"/></path>`
-  const brilho = dourada
-    ? `<rect x="${xE - 3.5}" y="${yT - 3.5}" width="${xD - xE + 7}" height="${yB - yT + 7}" rx="5" fill="none" stroke="#FFD86B" stroke-width="2.5">` +
-      `<animate attributeName="stroke-opacity" dur="1.8s" repeatCount="indefinite" values=".15;.7;.15"/></rect>` +
-      estrela(xE + 5, yT + 8, 3, '0;1;0;0', 2.4) + estrela(xD - 4, yT + 20, 2.4, '0;0;1;0', 2.4) + estrela(xE + 6, yB - 10, 2.6, '1;0;0;1', 2.4) +
-      estrela(xD + 5, yT + 2, 3, '0;0;1;0', 3) + estrela(xE - 5, yT + 30, 2.4, '0;1;0;0', 2.1)
+      ? `<path d="${formaDoRaio}" fill="#fff" filter="url(#h)"><animate attributeName="opacity" dur="3s" repeatCount="indefinite" ${SUAVE} values=".2;.85;.2"/></path>` +
+        `<path d="${formaDoRaio}" fill="#fff" stroke="#0b1116" stroke-opacity=".5" stroke-width=".7" stroke-linejoin="round"><animate attributeName="opacity" dur="3s" repeatCount="indefinite" ${SUAVE} values=".72;1;.72"/></path>`
+      : `<path d="${formaDoRaio}" fill="none" stroke="#E24B4A" stroke-opacity=".8" stroke-width="1" stroke-linejoin="round"/>`
+  // Estrelinhas de quatro pontas: acendem crescendo e apagam encolhendo, cada uma no seu tempo.
+  const estrela = (x: number, y: number, r: number, valores: string, dur: number) => {
+    const c = arred(r * 0.26)
+    return (
+      `<g transform="translate(${x} ${y})"><path d="M0 ${-r}L${c} -${c}L${r} 0L${c} ${c}L0 ${r}L-${c} ${c}L${-r} 0L-${c} -${c}Z" fill="#FFF6C8" opacity="0">` +
+      `<animate attributeName="opacity" dur="${dur}s" repeatCount="indefinite" values="${valores}"/>` +
+      `<animateTransform attributeName="transform" type="scale" dur="${dur}s" repeatCount="indefinite" values="${valores.split(';').map(v => (v === '1' ? '1' : '.25')).join(';')}"/></path></g>`
+    )
+  }
+  const estrelas = dourada
+    ? estrela(xE + 5, yT + 8, 3, '0;1;0;0', 2.4) + estrela(xD - 4, yT + 20, 2.4, '0;0;1;0', 2.4) + estrela(xE + 6, yB - 10, 2.6, '1;0;0;1', 2.4) +
+      estrela(xD + 7, yT + 1, 3.2, '0;0;1;0', 3) + estrela(xE - 7, yT + 30, 2.6, '0;1;0;0', 2.1) + estrela(xD + 8, yB - 14, 2.2, '1;0;0;1', 2.7)
     : ''
-  const contorno = fraca ? '#E24B4A' : dourada ? '#FFD86B' : '#d6ecf7'
-  const corTexto = dourada ? '#FFD86B' : '#ecece6'
+  // Luz em volta: ouro pulsando com sobra, vermelho pulsando no fim, e no resto só o clarão da própria carga.
+  const corpoTodo = `x="${xE - 2}" y="${yT - 2}" width="${xD - xE + 4}" height="${yB - yT + 4}" rx="6"`
+  const luz = dourada
+    ? `<rect ${corpoTodo} fill="#FFD86B" filter="url(#b)"><animate attributeName="opacity" dur="2.4s" repeatCount="indefinite" ${SUAVE} values=".3;.8;.3"/></rect>`
+    : fraca
+      ? `<rect ${corpoTodo} fill="#E24B4A" filter="url(#b)"><animate attributeName="opacity" dur="1.2s" repeatCount="indefinite" ${SUAVE} values=".15;.65;.15"/></rect>`
+      : `<rect x="${xE}" y="${n1(nivel)}" width="${xD - xE}" height="${n1(yB - nivel)}" rx="3" fill="${cor}" opacity=".36" filter="url(#b)"/>`
+  const pisca = fraca ? `<animate attributeName="stroke-opacity" dur="1.2s" repeatCount="indefinite" ${SUAVE} values="1;.3;1"/>` : ''
+  const contorno = fraca ? '#E24B4A' : dourada ? '#FFD86B' : 'url(#k)'
+  const corTexto = dourada ? '#FFD86B' : numero < 0 ? '#F09595' : '#ecece6'
   // "Energy 130%" não cabe em 13px: a letra diminui para caber na largura (cerca de 0,6 em por caractere)
   const texto = `${rotulo} ${numero}%`
   const tamanhoTexto = Math.min(13, Math.floor(((VT_W - 2) / (texto.length * 0.6)) * 10) / 10)
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" width="${VT_W}" height="${VT_H}" viewBox="0 0 ${VT_W} ${VT_H}">` +
-    `<defs><linearGradient id="g" x1="0" x2="1" y1="0" y2="0"><stop offset="0" stop-color="${tom(cor, 0.4)}"/><stop offset=".45" stop-color="${cor}"/><stop offset="1" stop-color="${tom(cor, -0.55)}"/></linearGradient>` +
-    `<linearGradient id="m" x1="0" x2="1" y1="0" y2="0"><stop offset="0" stop-color="#dfe5e8"/><stop offset=".5" stop-color="#8d979d"/><stop offset="1" stop-color="#4c5459"/></linearGradient>` +
-    `<clipPath id="d"><rect x="${xE}" y="${yT}" width="${xD - xE}" height="${yB - yT}" rx="2"/></clipPath></defs>` +
-    `<rect x="${cx - 5}" y="2" width="10" height="${yT - 3}" rx="1.5" fill="url(#m)"/>` +
-    `<rect x="${xE}" y="${yT}" width="${xD - xE}" height="${yB - yT}" rx="2" fill="#0e1419" fill-opacity=".45"/>` +
-    `<g clip-path="url(#d)">${gel}${marcas}<rect x="${xE + 1}" y="${yT}" width="2.4" height="${yB - yT}" fill="#fff" fill-opacity=".35"/></g>` +
+    `<defs>${corDoLiquido(cor, nivel, yB, dourada ? -0.3 : -0.6)}` +
+    `<linearGradient id="m" x1="0" x2="1" y1="0" y2="0">${METAL}</linearGradient>` +
+    `<linearGradient id="k" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#f1f6f8"/><stop offset=".5" stop-color="#9fb0ba"/><stop offset="1" stop-color="#5b6870"/></linearGradient>` +
+    `<linearGradient id="s" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity="0"/><stop offset=".5" stop-color="#fff" stop-opacity=".55"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>` +
+    REFLEXO_VIDRO +
+    DESFOQUES +
+    `<clipPath id="d"><rect x="${xE}" y="${yT}" width="${xD - xE}" height="${yB - yT}" rx="2.6"/></clipPath>` +
+    `<clipPath id="c"><rect x="${xE}" y="${n1(nivel)}" width="${xD - xE}" height="${n1(yB - nivel)}"/></clipPath></defs>` +
+    luz +
+    pecaDeMetal(cx - 5.5, 2, 11, yT - 4) +
+    `<rect x="${xE - 1.6}" y="${yT - 1.6}" width="${xD - xE + 3.2}" height="${yB - yT + 3.2}" rx="4.4" fill="#161c21" stroke="${contorno}" stroke-width="1.5">${pisca}</rect>` +
+    `<rect x="${xE}" y="${yT}" width="${xD - xE}" height="${yB - yT}" rx="2.6" fill="#070b0e"/>` +
+    `<g clip-path="url(#d)">${energia}<path d="${celulas}" stroke="#0b1116" stroke-opacity=".5" stroke-width="1.1" fill="none"/></g>` +
     raio +
-    `<rect x="${xE - 1.5}" y="${yT - 1.5}" width="${xD - xE + 3}" height="${yB - yT + 3}" rx="3.5" fill="none" stroke="${contorno}" stroke-width="1.6">${pisca}</rect>` +
-    brilho +
-    `<text x="${VT_W / 2}" y="${VT_H - 1}" text-anchor="middle" font-size="${tamanhoTexto}" font-weight="600" font-family="system-ui,sans-serif" fill="${corTexto}">${texto}</text></svg>`
+    `<rect x="${xE + 2}" y="${yT + 2.5}" width="2" height="${yB - yT - 9}" rx="1" fill="url(#e)" opacity=".8"/>` +
+    estrelas +
+    rotuloDoFrasco(texto, tamanhoTexto, corTexto, VT_H - 3.5) +
+    `</svg>`
   )
 }
 

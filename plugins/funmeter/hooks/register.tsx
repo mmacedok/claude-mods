@@ -1614,6 +1614,14 @@ const PISO_RETOMADO = 20000 // tamanho assumido da 1ª mensagem numa sessão ret
 const REAPARECE_MSGS = 5 // fechado no ✕, o aviso volta depois de 5 mensagens
 const FORCAR_LARANJA = false // true mostra o aviso sempre (para testar o visual)
 
+// As fatias do último turno, encolhidas ou esticadas para somarem o contexto medido: mantêm a proporção entre os tipos.
+function naMedida(f: Fatias, medido: number | null): Fatias {
+  const total = soma(f)
+  if (medido === null || total <= 0) return f
+  const k = medido / total
+  return { lido: Math.round(f.lido * k), escrito: Math.round(f.escrito * k), input: Math.round(f.input * k), output: Math.round(f.output * k) }
+}
+
 function valeHandoff(ctx: number, base: number | null, msgs: number, percent: number) {
   if (percent >= HANDOFF_PCT) return true
   const extra = ctx - (base ?? ctx)
@@ -1802,6 +1810,8 @@ export const register: Register = on => {
     if (c.tokens !== undefined) {
       const m: Medida = { tokens: c.tokens, janela: c.window, percent: c.percent ?? 0 }
       await update($, medida, () => m)
+      // O piso nasce da soma do 1º turno, que num turno de várias chamadas é maior que o contexto: nunca passa do medido.
+      if (c.tokens > 0) await update($, piso, p => (p !== null && p > (c.tokens as number) ? (c.tokens as number) : p))
       // Sessão retomada: a 1ª mensagem não está à vista, então o piso é um tamanho típico e as mensagens vêm do número de turnos.
       if (c.tokens > 0 && (await read($, piso)) === null && (await read($, mensagens)) === 0) {
         try {
@@ -1893,9 +1903,13 @@ export const register: Register = on => {
     const semana = lims.find(x => x.kind === 'seven_day')
     const modo: Modo = e.props.isWorking ? 'working' : contente ? 'happy' : 'idle'
     const janela = janelaValida(m?.janela ?? JANELA_PADRAO)
-    const ocupadoCtx = soma(f)
+    // f é a soma de todas as chamadas do último turno: num turno longo ela passa do que está no contexto (e até da janela).
+    // O tamanho do contexto é o que o engine mediu; f só diz em que proporção ele se divide entre os tipos.
+    const medido = m?.tokens !== undefined && m.tokens > 0 ? m.tokens : null
+    const noTubo = naMedida(f, medido)
+    const ocupadoCtx = soma(noTubo)
     // numa sessão retomada ainda não há resposta nesta execução (f é zero), mas o engine já mediu o contexto
-    const ctx = Math.max(ocupadoCtx, m?.tokens ?? 0)
+    const ctx = medido ?? ocupadoCtx
     const livre = Math.max(janela - ocupadoCtx, 0)
     const percent = m?.percent ?? Math.round((ocupadoCtx / janela) * 100)
     const corPct = percent >= 85 ? '#E24B4A' : undefined
@@ -1951,12 +1965,12 @@ export const register: Register = on => {
         <Box flexDirection="row" gap={1} alignItems="center">
           {Svg ? (
             <Box key="tubo" flexGrow={1} flexShrink={1} minWidth={0}>
-              <Svg key="tubo-svg" source={comFase(`${sid}:tubo`, tuboGuardadoDe(sid, f, janela, tuboW), agora)} alt={`Context ${percent}%`} height={TUBO_H} />
+              <Svg key="tubo-svg" source={comFase(`${sid}:tubo`, tuboGuardadoDe(sid, noTubo, janela, tuboW), agora)} alt={`Context ${percent}%`} height={TUBO_H} />
             </Box>
           ) : (
             <Box flexDirection="row" flexGrow={1} columnGap={0}>
-              {TIPOS.filter(x => f[x.campo] > 0).map(x => (
-                <Box key={x.campo} flexGrow={escala(f[x.campo], janela)} minWidth={1} height={1} backgroundColor={x.cor} />
+              {TIPOS.filter(x => noTubo[x.campo] > 0).map(x => (
+                <Box key={x.campo} flexGrow={escala(noTubo[x.campo], janela)} minWidth={1} height={1} backgroundColor={x.cor} />
               ))}
               <Box key="livre" flexGrow={escala(livre, janela)} minWidth={livre > 0 ? 1 : 0} height={1} backgroundColor={LIVRE} />
             </Box>

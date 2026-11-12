@@ -1,5 +1,10 @@
 # FunMeter changelog
 
+## 0.5.18 (2026-11-12)
+
+- The context tube is sized by the context the engine measured. It used to be drawn from the token total of the last turn, which adds up every call of the turn: a long turn (2M of cache reads across many calls) filled the whole tube while the context sat at 18%. The colours keep the proportion between token types; the numbers under the tube are still the turn totals.
+- The handoff warning uses the measured context too, so it no longer reports millions of tokens of history after a long turn, and the first-message floor can never be larger than the measured context.
+
 ## 0.5.17 (2026-11-12)
 
 - Spacing pass on the band. The buttons moved out of the column that held the limit tubes into a footer row (agent boxes and skills on the left, buttons on the right): they are wider than the tubes and left a hole between the context tube and the vials. The context tube now runs all the way to the vials.

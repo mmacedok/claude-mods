@@ -545,3 +545,23 @@ test('the daily battery stays hidden without a weekly reset time', async ($, on)
   await $.session.measure({ context: { tokens: 1000, window: 200000, percent: 1 }, rateLimits: [{ kind: 'seven_day', percentUsed: 39 }], changed: [] })
   await ve(null)
 })
+
+test('a long turn of many calls sizes the tube by the measured context, not by the sum of its calls', async ($, on) => {
+  on('turn.complete', (_$: any, e: any) => ({ text: 'ok', usage: e.usage }))
+  on('session.measure', (_$: any, e: any) => ({ changed: e.changed }))
+  on('ui.render', ($$: any, e: any) => { const { Box } = $$.ui.resolve(e); return <Box key="engine" /> })
+  mock.clock(on)
+  // 2,28M somados nas chamadas do turno, mas só 177k no contexto de uma janela de 1M
+  await $.turn.complete({
+    turnId: 't0', reason: 'answer', answer: 'ok', durationMs: 10, isAborted: false,
+    usage: { model: 'claude-opus-5-5', input_tokens: 30, output_tokens: 43000, cache_read_input_tokens: 2150000, cache_creation_input_tokens: 88700 },
+  })
+  await $.session.measure({ context: { tokens: 177000, window: 1000000, percent: 18 }, rateLimits: [], changed: [] })
+  const ui = await $.ui.mount({ plugin: 'funmeter', surface: 'desktop', component: 'AbovePrompt', props: PROPS })
+  const tubo = ((await fontesDe(ui)) as string[]).find(s => s.includes('id="cheio"')) ?? ''
+  const cheio = Number(tubo.match(/id="cheio"><rect x="8" y="0" width="([\d.]+)"/)?.[1])
+  const comprimento = PROPS.bodyColumns * 7.6 - 16
+  expect(cheio).toBeGreaterThan(comprimento * 0.15)
+  expect(cheio).toBeLessThan(comprimento * 0.2)
+  await ui.unmount()
+})

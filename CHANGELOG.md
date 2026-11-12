@@ -1,5 +1,12 @@
 # FunMeter changelog
 
+## 0.6.0 (2026-11-12)
+
+- The mascot is redrawn in vector, comic style: ink outline, flat colour with a hard-edged shadow and a band of halftone dots, a rim light and a white glint. Its motion is eased instead of stepped (squash and stretch, rotation, arms that swing from the shoulder), and it has a mouth for the expressions that need one.
+- Idle is a 60 s cycle of scenes over breathing and blinking: looks around, waves, yawns and stretches, a somersault, juggles the token-coloured balls until the last one lands on its head, types on a laptop while a code window writes itself, dances with music notes, falls down a cartoon hole (after pedalling in the air) and jumps back out, sneezes, and dozes off with rising z z z until it wakes with a start.
+- Working (6 s): types with its eyes running over the screen and code symbols floating up, stalls, scratches its head and thinks, a light bulb pops, and it types faster. Happy (2.4 s): a star jump through a burst of confetti, a squash on landing and two cheering hops.
+- The frame-by-frame pixel idles (tap dance, jelly, sneeze) and the cable scene are gone with the pixel-art mascot; the sneeze returns as a vector scene.
+
 ## 0.5.18 (2026-11-12)
 
 - The context tube is sized by the context the engine measured. It used to be drawn from the token total of the last turn, which adds up every call of the turn: a long turn (2M of cache reads across many calls) filled the whole tube while the context sat at 18%. The colours keep the proportion between token types; the numbers under the tube are still the turn totals.

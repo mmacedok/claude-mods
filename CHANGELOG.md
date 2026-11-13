@@ -1,5 +1,12 @@
 # FunMeter changelog
 
+## 0.7.0 (2026-11-13)
+
+- Agent bars replace the agent boxes: one bar per Claude subagent and per Gemini or Codex job, named after its model (Hydrogen, Sol, Haiku; "Sol 2" when one repeats), with its effort, what it is doing now, its task count (3/7) and a close button.
+- Each bar is measured on its provider's weekly limit: it starts from the weekly use when the agent began, and adds what the weekly went up because of it. Agents running together split the rise by the tokens each one used; the main loop's share of the Claude weekly is left out.
+- Gemini and Codex jobs are read from the live status files their MCP servers now write (<id>.live.json, every event); Claude subagents from their own events, and their prompt asks for a task list.
+- The look of the bars is provisional; the final design is planned in docs/AGENTES-PLANO.md.
+
 ## 0.6.0 (2026-11-12)
 
 - The mascot is redrawn in vector, comic style: ink outline, flat colour with a hard-edged shadow and a band of halftone dots, a rim light and a white glint. Its motion is eased instead of stepped (squash and stretch, rotation, arms that swing from the shoulder), and it has a mouth for the expressions that need one.

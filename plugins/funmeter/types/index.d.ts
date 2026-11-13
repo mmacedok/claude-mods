@@ -3,8 +3,35 @@ export type Medida = { tokens: number; janela: number; percent: number }
 export type Limite = { kind: string; percentUsed: number; resetsAt?: string }
 export type Cota = { nome: string; janela: string; usado: number }
 export type UsoModelo = Fatias & { chamadas: number }
-/** Uso de agentes de fora (Gemini, Codex) nesta rodada: a leitura de cada cota antes do primeiro uso, por `nome|janela`. */
-export type Rodada = { agentes: string[]; inicio: Record<string, number>; nomes?: Record<string, string> }
+/** Uma barra de agente (docs/AGENTES-PLANO.md): subagente do Claude ou job do Gemini/Codex. */
+export type BarraAgente = {
+  id: string
+  provedor: 'Claude' | 'Gemini' | 'Codex'
+  modelo: string
+  /** nome do modelo: Hydrogen, Sol, Haiku; "Sol 2" quando repete */
+  nome: string
+  esforco?: string
+  acao: string
+  tarefas?: { feitas: number; total: number }
+  idsFeitos?: string[]
+  imagens?: { prontas: number; total: number }
+  estado: 'rodando' | 'concluido' | 'erro' | 'parado' | 'limite'
+  tentaDeNovo?: string
+  inicio: number
+  fim?: number
+  /** tokens que pesam no limite, para dividir a subida do semanal entre agentes juntos */
+  tokens: number
+  /** semanal do provedor (0..1) quando o agente começou; null até a primeira leitura */
+  base: number | null
+  /** quanto o semanal subiu por causa dele (0..1) */
+  gasto: number
+  fechada?: boolean
+  liveMtime?: number
+}
+/** Última leitura do semanal de um grupo (Claude, Codex, Gemini:<balde>) e os tokens de cada agente naquela hora. */
+export type ContaSemanal = { semanal: number; tokens: Record<string, number> }
+/** Job do Gemini ou do Codex pedido nesta sessão cujo .live.json ainda não apareceu. */
+export type Esperando = { provedor: 'Gemini' | 'Codex'; desde: number }
 
 declare module 'claude-code' {
   interface PluginState {
@@ -30,7 +57,9 @@ declare module 'claude-code' {
       ultimaResposta: number | null
       parado: boolean
       paradoFechado: number | null
-      rodada: Rodada | null
+      barras: BarraAgente[]
+      contas: Record<string, ContaSemanal>
+      esperando: Esperando[]
     }
   }
 }

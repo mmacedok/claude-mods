@@ -133,48 +133,101 @@ test('sessions share one quota read and agy runs without its updater', async ($,
   expect(rodou.length).toBe(1)
 })
 
-test('agent boxes show only what this run of Gemini spent, and the ✕ closes them', async ($, on) => {
-  let resta = 0.8 // o Gemini já tinha 20% da semana gasto antes
+test('a Claude subagent gets a bar named after its model, with tasks, action and its share of the weekly limit', async ($, on) => {
+  let pedido = ''
+  mock.clock(on)
+  on('turn.complete', (_$: any, e: any) => ({ text: 'ok', usage: e.usage }))
+  on('session.measure', (_$: any, e: any) => ({ changed: e.changed }))
+  on('ui.render', ($$: any, e: any) => { const { Box } = $$.ui.resolve(e); return <Box key="engine" /> })
+  on('agent.spawn', (_$: any, e: any) => {
+    pedido = e.prompt
+    return { model: 'claude-haiku-5-5', agentId: 'a1' } as any
+  })
+  on('tool.call', async () => ({ result: 'ok', text: 'ok' }) as any)
+  const semana = (p: number) => $.session.measure({
+    context: { tokens: 61500, window: 200000, percent: 31 },
+    rateLimits: [{ kind: 'five_hour', percentUsed: 40 }, { kind: 'seven_day', percentUsed: p }], cost: { usd: 1.23 }, changed: [],
+  })
+  await estado($)
+  await semana(27)
+  await $.agent.spawn({ prompt: 'Revise o código', description: 'revisão' } as any)
+  expect(pedido).toContain('TaskCreate') // o prompt pede a lista de tarefas que vira o "3/7"
+  await semana(27) // a base da barra: o semanal de quando o agente começou
+  await $.tool.call({ tool: 'TaskCreate', subject: 'ler', agentId: 'a1' } as any)
+  await $.tool.call({ tool: 'TaskCreate', subject: 'testar', agentId: 'a1' } as any)
+  await $.tool.call({ tool: 'TaskUpdate', taskId: '1', status: 'completed', agentId: 'a1' } as any)
+  await $.tool.call({ tool: 'Read', file_path: 'D:/x/hooks/register.tsx', agentId: 'a1' } as any)
+  await $.turn.complete({
+    turnId: 'sub1', agentId: 'a1', reason: 'answer', answer: 'ok', durationMs: 10, isAborted: false,
+    usage: { model: 'claude-haiku-5-5', input_tokens: 3000, output_tokens: 1000, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 },
+  } as any)
+  await semana(30) // a subida inteira foi do subagente: só ele gastou tokens no meio
+  const ui = await $.ui.mount({ plugin: 'funmeter', surface: 'desktop', component: 'AbovePrompt', props: PROPS })
+  expect(await ui.find({ key: 'agente-a1' })).toBeDefined()
+  const textos = ((await ui.findAll({ type: 'Text' })) as any[]).map(x => x.text)
+  expect(textos).toContain('Haiku')
+  expect(textos).toContain('1/2')
+  expect(textos).toContain('✓')
+  expect(textos).toContain('+3.0%')
+  await ui.press({ key: 'fechar-a1' })
+  await ui.unmount()
+  const de_novo = await $.ui.mount({ plugin: 'funmeter', surface: 'desktop', component: 'AbovePrompt', props: PROPS })
+  expect(await de_novo.find({ key: 'agente-a1' })).toBeUndefined()
+  await de_novo.unmount()
+})
+
+test('a Gemini job shows from its live file, starts at the weekly use and adds what it spent', async ($, on) => {
+  let resta = 0.73 // 27% da semana já gasto
   let arquivo: string | undefined
+  let vivo: any = null
+  let mtime = 0
   mock.clock(on)
   on('turn.complete', (_$: any, e: any) => ({ text: 'ok', usage: e.usage }))
   on('session.measure', (_$: any, e: any) => ({ changed: e.changed }))
   on('ui.render', ($$: any, e: any) => { const { Box } = $$.ui.resolve(e); return <Box key="engine" /> })
   on('env.get', async () => ({ value: 'C:/Users/teste' }) as any)
-  on('fs.read', async () => ({ value: arquivo }) as any)
+  on('fs.read', async (_: any, e: any) => ({ value: String(e.path).endsWith('.live.json') ? JSON.stringify(vivo) : arquivo }) as any)
   on('fs.write', async (_: any, e: any) => {
     arquivo = e.text
     return { value: undefined } as any
   })
-  on('fs.list', async () => ({ value: [] }) as any)
+  on('fs.list', async (_: any, e: any) => ({
+    value: vivo && String(e.path).split(String.fromCharCode(92)).join('/').includes('Bridge/respostas/mcp') && !String(e.path).includes('Codex')
+      ? [{ name: 'g1.live.json', kind: 'file', size: 300, mtimeMs: mtime, isLink: false }] : [],
+  }) as any)
   on('process.run', async () => ({ value: { exitCode: 0, stdout: `{"command":{"data":{"groups":[{"name":"Gemini Models","buckets":[{"window":"weekly","remaining_fraction":${resta}}]}]}}}`, stderr: '' } }) as any)
   on('tool.call', async (_: any, e: any) => {
-    if (e.tool === 'mcp__gemini__gemini_run') resta = 0.65 // a rodada gastou 15%
+    if (e.tool === 'mcp__gemini__gemini_start') {
+      mtime = Date.now() + 500
+      vivo = { id: 'g1', provedor: 'Gemini', modelo: 'gemini-4-hydrogen-xhigh', esforco: 'xhigh', estado: 'rodando', inicio: Date.now(), passos: 3, tokens: 1000, acao: 'rodando npm test' }
+    }
     return { result: 'ok', text: 'ok' } as any
   })
   await estado($)
-  const caixa = async () => {
+  const barra = async () => {
     const ui = await $.ui.mount({ plugin: 'funmeter', surface: 'desktop', component: 'AbovePrompt', props: PROPS })
-    return { ui, gemini: await ui.find({ key: 'agente-Gemini' }), textos: ((await ui.findAll({ type: 'Text' })) as any[]).map(x => x.text) }
+    const r = { achou: await ui.find({ key: 'agente-g1' }), textos: ((await ui.findAll({ type: 'Text' })) as any[]).map(x => x.text) }
+    await ui.unmount()
+    return r
   }
-  let v = await caixa()
-  expect(v.gemini).toBeUndefined() // sem agente usado, nada de caixinha
-  await v.ui.unmount()
-  await $.tool.call({ tool: 'Read', file_path: 'C:/x.txt' } as any)
-  v = await caixa()
-  expect(v.gemini).toBeUndefined() // ferramenta comum não abre rodada
-  await v.ui.unmount()
-  await $.tool.call({ tool: 'mcp__gemini__gemini_run', prompt: 'oi' } as any)
-  await new Promise(r => setTimeout(r, 30))
-  v = await caixa()
-  expect(v.gemini).toBeDefined()
-  expect(v.textos).toContain('15%')
-  expect(v.textos).not.toContain('35%')
-  await v.ui.press({ key: 'fechar-Gemini' })
-  await v.ui.unmount()
-  v = await caixa()
-  expect(v.gemini).toBeUndefined()
-  await v.ui.unmount()
+  expect((await barra()).achou).toBeUndefined() // sem job, sem barra
+  await $.tool.call({ tool: 'mcp__gemini__gemini_start', task: 'oi' } as any)
+  await new Promise(r => setTimeout(r, 50))
+  let v = await barra()
+  expect(v.achou).toBeDefined()
+  expect(v.textos).toContain('Hydrogen')
+  expect(v.textos).toContain('xhigh')
+  expect(v.textos).toContain('rodando npm test')
+  expect(v.textos).toContain('+0%')
+  // o job termina: o semanal foi a 30%
+  resta = 0.7
+  mtime += 1000
+  vivo = { ...vivo, estado: 'concluido', acao: 'concluído', tokens: 9000, fim: Date.now() }
+  await $.tool.call({ tool: 'mcp__gemini__gemini_result', id: 'g1' } as any)
+  await new Promise(r => setTimeout(r, 50))
+  v = await barra()
+  expect(v.textos).toContain('✓')
+  expect(v.textos).toContain('+3.0%')
 })
 
 test('an hour after the last reply the warning shows, and a new reply clears it', async ($, on) => {

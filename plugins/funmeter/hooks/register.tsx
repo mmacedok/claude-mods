@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, ModelUsage, Register } from 'claude-code'
 
-import type { Cota, Fatias, Limite, Medida, Rodada, UsoModelo } from '../types'
+import type { BarraAgente, Cota, Fatias, Limite, Medida, UsoModelo } from '../types'
 
 const ZERO: Fatias = { lido: 0, escrito: 0, input: 0, output: 0 }
 
@@ -26,7 +26,9 @@ const pulso = atom({ plugin: 'funmeter', key: 'pulso' } as const, 0)
 const ultimaResposta = atom({ plugin: 'funmeter', key: 'ultimaResposta' } as const, null)
 const parado = atom({ plugin: 'funmeter', key: 'parado' } as const, false)
 const paradoFechado = atom({ plugin: 'funmeter', key: 'paradoFechado' } as const, null)
-const rodada = atom({ plugin: 'funmeter', key: 'rodada' } as const, null)
+const barras = atom({ plugin: 'funmeter', key: 'barras' } as const, [])
+const contas = atom({ plugin: 'funmeter', key: 'contas' } as const, {})
+const esperando = atom({ plugin: 'funmeter', key: 'esperando' } as const, [])
 
 const LARANJA = '#D77757'
 const CLARO = '#EE9C78'
@@ -887,6 +889,8 @@ const barrinha = (usado: number, cor = AZUL) =>
   `<rect width="${(Math.min(1, Math.max(0, usado)) * COTA_W).toFixed(2)}" height="${COTA_H}" rx="2.5" fill="${cor}" fill-opacity=".9"/></svg>`
 // O Codex (plano ChatGPT) tem a sua cor: um verde-água que não se confunde com os géis nem com o azul do Gemini.
 const VERDE_AGUA = '#2DD4BF'
+const COR_PROVEDOR = { Claude: LARANJA, Gemini: AZUL, Codex: VERDE_AGUA } as const
+const FUNDO_PROVEDOR = { Claude: '#33231D', Gemini: '#1A2738', Codex: '#142D2A' } as const
 
 // Os frascos dos limites do Claude (5h e semana) e a bateria do dia: mesmo tamanho, mesmo vidro e mesmo metal.
 const VT_W = 58
@@ -1296,10 +1300,8 @@ async function atualizarCodex($: EngineInterface) {
   }
 }
 
-// Rodada de agentes de fora: antes do primeiro uso de um agente a cota dele é medida e guardada;
-// a caixinha mostra só o que se gastou desde então e some no ✕. O próximo uso depois do ✕ começa outra rodada.
+// Agentes de fora (Gemini, Codex): a cota é medida antes e depois de cada chamada, para os números das barras ficarem frescos.
 type Agente = 'Gemini' | 'Codex'
-const chaveCota = (c: Cota) => `${c.nome}|${c.janela}`
 
 function agenteDe(e: Record<string, unknown>): Agente | null {
   const ferramenta = String(e.tool ?? '')
@@ -1315,45 +1317,259 @@ function agenteDe(e: Record<string, unknown>): Agente | null {
 }
 
 const medirAgente = ($: EngineInterface, a: Agente) => (a === 'Codex' ? atualizarCodex($) : atualizarCotas($, true))
-const cotasDoAgente = async ($: EngineInterface, a: Agente): Promise<Cota[]> => (a === 'Codex' ? read($, cotasCodex) : read($, cotas))
 
-// Cada agente ganha um codinome sci-fi sorteado a cada rodada, nunca igual ao do outro; a cor da caixinha diz quem é (azul Gemini, verde-água Codex).
-const NOMES_SCIFI = ['Vex-9', 'Nova', 'Orion', 'Zephyr', 'Astra-7', 'Nyx', 'Talon', 'Cygnus', 'Solaris', 'Ion', 'Quasar', 'Helix-3', 'Lyra', 'Axon', 'Vanta', 'Pulsar', 'Kestrel', 'Nebula', 'Rigel', 'Vega', 'Chronos', 'Halcyon', 'Photon', 'Zenith']
-const sortearNome = (usados: string[]) => {
-  const livres = NOMES_SCIFI.filter(n => !usados.includes(n))
-  return livres[Math.floor(Math.random() * livres.length)] ?? NOMES_SCIFI[0]!
+// Barras de agentes: uma por subagente do Claude e por job do Gemini ou do Codex, com o nome do modelo, o esforço,
+// a ação de agora e quanto o limite semanal do provedor subiu por causa dele. Plano em docs/AGENTES-PLANO.md.
+// Gemini e Codex: os servidores MCP gravam <id>.live.json; o funmeter lê a cada 2 s só os arquivos que mudaram.
+const PASTA_LIVE: Record<'Gemini' | 'Codex', string> = {
+  Gemini: 'D:/AI Workshop/Bridge/respostas/mcp',
+  Codex: 'D:/AI Workshop/Codex/Bridge/respostas/mcp',
+}
+const FERRAMENTA_JOB = /^mcp__(gemini__gemini_(start|run)|codex__codex_(start|tarefa))$/
+const BARRAS_MAX = 12
+const RECENTE_MS = 3 * 60 * 1000 // uma subida do semanal logo depois do fim ainda é do agente que acabou
+const ESFORCOS = ['low', 'medium', 'high', 'xhigh', 'max']
+
+const capital = (s: string) => (s ? s[0]!.toUpperCase() + s.slice(1) : s)
+const curto = (p: unknown) => String(p ?? '').split(/[\\/]/).filter(Boolean).slice(-2).join('/')
+
+// O nome da barra é o do modelo: gemini-4-hydrogen-xhigh → Hydrogen, gpt-6.1-sol → Sol, claude-haiku-5-5 → Haiku.
+function nomeDoModelo(modelo: string): string {
+  const m = modelo.toLowerCase().replace(/\[.*?\]/g, '')
+  const achado =
+    m.match(/^gemini-[\d.]+-([a-z]+)/)?.[1] ??
+    m.match(/^gpt-[\d.]+-([a-z]+)/)?.[1] ??
+    m.match(/^claude-([a-z]+)/)?.[1] ??
+    m.match(/^(haiku|sonnet|opus|fable|mythos)\b/)?.[1] ??
+    m.split(/[-_/]/).filter(x => /^[a-z]+$/.test(x) && !ESFORCOS.includes(x)).pop()
+  return capital(achado ?? modelo)
 }
 
-async function comecarRodada($: EngineInterface, a: Agente) {
-  const atual = await read($, rodada)
-  if (atual?.agentes.includes(a)) return
-  await medirAgente($, a)
-  const inicio: Record<string, number> = {}
-  for (const c of await cotasDoAgente($, a)) inicio[chaveCota(c)] = c.usado
-  await update($, rodada, r => {
-    const nomes = { ...(r?.nomes ?? {}) }
-    nomes[a] = sortearNome(Object.entries(nomes).filter(([k]) => k !== a).map(([, v]) => v))
-    return { agentes: [...(r?.agentes ?? []), a], inicio: { ...(r?.inicio ?? {}), ...inicio }, nomes }
+function nomeLivre(base: string, lista: BarraAgente[]): string {
+  const usados = new Set(lista.filter(b => !b.fechada).map(b => b.nome))
+  if (!usados.has(base)) return base
+  for (let n = 2; ; n++) if (!usados.has(`${base} ${n}`)) return `${base} ${n}`
+}
+
+// A ação de um subagente do Claude, pela ferramenta que ele chamou.
+function acaoDaFerramenta(e: Record<string, any>): string | undefined {
+  const t = String(e.tool ?? '')
+  if (t === 'Read') return 'lendo ' + curto(e.file_path)
+  if (t === 'Edit' || t === 'Write' || t === 'NotebookEdit') return 'escrevendo ' + curto(e.file_path ?? e.notebook_path)
+  if (t === 'Bash' || t === 'PowerShell') return 'rodando ' + String(e.command ?? '').replace(/\s+/g, ' ').slice(0, 60)
+  if (t === 'Grep' || t === 'Glob') return 'buscando ' + String(e.pattern ?? '').slice(0, 40)
+  if (t === 'WebFetch' || t === 'WebSearch') return 'buscando na web'
+  if (t === 'TaskUpdate' && e.status === 'in_progress' && e.activeForm) return String(e.activeForm)
+  if (t === 'TaskCreate' || t === 'TaskUpdate' || t === 'TodoWrite' || t === 'TaskList' || t === 'TaskGet') return undefined
+  const mcp = t.match(/^mcp__[^_]+(?:_[^_]+)*?__(.+)$/)
+  if (mcp) return 'usando ' + mcp[1]!.replace(/_/g, ' ')
+  return t ? t.toLowerCase() : undefined
+}
+
+// As tarefas de um subagente do Claude (TaskCreate/TaskUpdate ou TodoWrite) viram o "3/7" da barra.
+function contarTarefas(b: BarraAgente, e: Record<string, any>): BarraAgente {
+  const t = String(e.tool ?? '')
+  if (t === 'TodoWrite' && Array.isArray(e.todos)) {
+    const todos = e.todos as { status: string; activeForm?: string }[]
+    const fazendo = todos.find(x => x.status === 'in_progress')
+    return {
+      ...b,
+      tarefas: { feitas: todos.filter(x => x.status === 'completed').length, total: todos.length },
+      acao: fazendo?.activeForm ?? b.acao,
+    }
+  }
+  if (t === 'TaskCreate') {
+    const total = (b.tarefas?.total ?? 0) + 1
+    return { ...b, tarefas: { feitas: b.tarefas?.feitas ?? 0, total } }
+  }
+  if (t === 'TaskUpdate' && e.taskId) {
+    const feitos = new Set(b.idsFeitos ?? [])
+    if (e.status === 'completed') feitos.add(String(e.taskId))
+    else feitos.delete(String(e.taskId))
+    const feitas = feitos.size
+    return { ...b, idsFeitos: [...feitos], tarefas: { feitas, total: Math.max(b.tarefas?.total ?? 0, feitas) } }
+  }
+  return b
+}
+
+const PEDIDO_TAREFAS =
+  '\n\n(Progress display: before starting, break this task into 3-8 steps with TaskCreate, and mark each step in_progress and completed with TaskUpdate as you go.)'
+
+// Grupo da conta do semanal: o limite que o agente gasta. O Gemini tem baldes por família de modelo.
+const grupoDe = (b: Pick<BarraAgente, 'provedor' | 'modelo'>) =>
+  b.provedor === 'Gemini' ? (/argon/i.test(b.modelo) ? 'Gemini:Argon' : 'Gemini:Gemini') : b.provedor
+
+let semanalCodexVivo: { semanal: number; em: number } | null = null
+let tokensPrincipal = 0 // tokens do loop principal: entram na divisão do semanal do Claude, e a parte deles fica de fora
+
+async function semanalDe($: EngineInterface, grupo: string): Promise<number | null> {
+  if (grupo === 'Claude') {
+    const s = (await read($, limites)).find(x => x.kind === 'seven_day')
+    return s ? s.percentUsed / 100 : null
+  }
+  if (grupo === 'Codex') {
+    if (semanalCodexVivo) return semanalCodexVivo.semanal
+    return (await read($, cotasCodex)).find(c => c.janela === 'wk')?.usado ?? null
+  }
+  const balde = grupo.split(':')[1]
+  return (await read($, cotas)).find(c => c.nome === balde && c.janela === 'wk')?.usado ?? null
+}
+
+// A subida do semanal desde a última leitura é repartida pelos tokens que cada agente do grupo gastou nesse intervalo.
+// Sem tokens novos (a cota subiu depois do fim), vai para os que terminaram há pouco, pelo total de cada um.
+async function contarSemanal($: EngineInterface) {
+  const lista = await read($, barras)
+  const grupos = new Set(lista.map(grupoDe))
+  if (!grupos.size) return
+  const contasAgora = { ...(await read($, contas)) }
+  const agora = Date.now()
+  let novas = lista
+  for (const g of grupos) {
+    const S = await semanalDe($, g)
+    if (S === null) continue
+    const doGrupo = novas.filter(b => grupoDe(b) === g)
+    const tokens: Record<string, number> = {}
+    for (const b of doGrupo) tokens[b.id] = b.tokens
+    if (g === 'Claude') tokens['__principal'] = tokensPrincipal
+    const antes = contasAgora[g]
+    const parte: Record<string, number> = {}
+    if (antes && S > antes.semanal + 1e-9) {
+      const d = S - antes.semanal
+      const pesos: Record<string, number> = {}
+      for (const [id, t] of Object.entries(tokens)) pesos[id] = Math.max(0, t - (antes.tokens[id] ?? 0))
+      let total = Object.values(pesos).reduce((a, x) => a + x, 0)
+      if (total === 0) {
+        for (const b of doGrupo) if (b.estado === 'rodando' || (b.fim && agora - b.fim < RECENTE_MS)) pesos[b.id] = Math.max(1, b.tokens)
+        total = Object.values(pesos).reduce((a, x) => a + x, 0)
+      }
+      if (total > 0) for (const [id, p] of Object.entries(pesos)) parte[id] = (d * p) / total
+    }
+    novas = novas.map(b => {
+      if (grupoDe(b) !== g) return b
+      const base = b.base ?? S
+      return parte[b.id] ? { ...b, base, gasto: b.gasto + parte[b.id]! } : b.base === null ? { ...b, base } : b
+    })
+    contasAgora[g] = { semanal: S, tokens }
+  }
+  await update($, contas, () => contasAgora)
+  await update($, barras, () => novas)
+}
+
+async function novaBarra($: EngineInterface, b: Omit<BarraAgente, 'nome' | 'base' | 'gasto' | 'tokens'> & { tokens?: number }) {
+  await update($, barras, lista => {
+    if (lista.some(x => x.id === b.id)) return lista
+    const nova: BarraAgente = { tokens: 0, ...b, nome: nomeLivre(nomeDoModelo(b.modelo), lista), base: null, gasto: 0 }
+    const ficam = [...lista, nova]
+    // as mais velhas já fechadas ou terminadas saem primeiro
+    while (ficam.length > BARRAS_MAX) {
+      const i = ficam.findIndex(x => x.fechada || x.estado !== 'rodando')
+      ficam.splice(i >= 0 ? i : 0, 1)
+    }
+    return ficam
   })
 }
 
-async function fecharAgente($: EngineInterface, a: string) {
-  await update($, rodada, r => {
-    if (!r) return null
-    const agentes = r.agentes.filter(x => x !== a)
-    return agentes.length ? { ...r, agentes } : null
-  })
+const mudarBarra = ($: EngineInterface, id: string, f: (b: BarraAgente) => BarraAgente) =>
+  update($, barras, lista => (lista.some(b => b.id === id) ? lista.map(b => (b.id === id ? f(b) : b)) : lista))
+
+async function fecharBarra($: EngineInterface, id: string) {
+  await update($, barras, lista => lista.map(b => (b.id === id ? { ...b, fechada: true } : b)))
 }
 
-// O que a rodada gastou de cada cota. Cota que não existia no começo conta do zero da primeira leitura (nada);
-// janela que reiniciou no meio fica em zero, nunca negativa.
-function gastoNaRodada(lista: Cota[], inicio: Record<string, number>, nome: string): Cota[] {
-  const gastos = lista.map(c => ({ ...c, usado: Math.max(0, c.usado - (inicio[chaveCota(c)] ?? c.usado)) }))
-  const usados = gastos.filter(c => c.usado >= 0.005)
-  if (usados.length) return usados
-  // nada gasto ainda: mostra só a cota principal do agente, em 0%
-  const principal = gastos.find(c => c.nome === nome && c.janela === 'wk') ?? gastos.find(c => c.nome === nome) ?? gastos[0]
-  return principal ? [principal] : []
+type Vivo = {
+  id: string; modelo?: string; esforco?: string; estado?: BarraAgente['estado']; inicio?: number; fim?: number
+  passos?: number; tokens?: number; acao?: string; imagens?: { prontas: number; total: number }
+  limites?: { semanal?: number }; tentaDeNovo?: string; em?: number
+}
+
+const deVivo = (b: BarraAgente, v: Vivo, mtime: number): BarraAgente => ({
+  ...b,
+  modelo: v.modelo ?? b.modelo,
+  esforco: v.esforco ?? b.esforco,
+  estado: v.estado ?? b.estado,
+  fim: v.fim ?? b.fim,
+  tokens: v.tokens ?? b.tokens,
+  acao: v.acao ?? b.acao,
+  imagens: v.imagens ?? b.imagens,
+  tentaDeNovo: v.tentaDeNovo ?? b.tentaDeNovo,
+  liveMtime: mtime,
+})
+
+// Lê os .live.json: acha os jobs que esta sessão acabou de pedir e atualiza os que estão rodando.
+async function lerVivos($: EngineInterface) {
+  const lista = await read($, barras)
+  const esperam = await read($, esperando)
+  for (const prov of ['Gemini', 'Codex'] as const) {
+    const pend = esperam.filter(x => x.provedor === prov)
+    const rodando = lista.filter(b => b.provedor === prov && b.estado === 'rodando' && !b.fechada)
+    if (!pend.length && !rodando.length) continue
+    let arquivos: { name: string; mtimeMs: number }[] = []
+    try {
+      arquivos = ((await $.fs.list(PASTA_LIVE[prov])) as { name: string; kind: string; mtimeMs: number }[]).filter(
+        a => a.kind === 'file' && a.name.endsWith('.live.json'),
+      )
+    } catch {
+      continue
+    }
+    const ler = async (nome: string): Promise<Vivo | null> => {
+      try {
+        return JSON.parse(String(await $.fs.read(`${PASTA_LIVE[prov]}/${nome}`))) as Vivo
+      } catch {
+        return null // arquivo sendo trocado: fica para a próxima volta
+      }
+    }
+    // jobs novos desta sessão: os arquivos que nasceram depois do pedido, um por pedido, do mais velho ao mais novo
+    if (pend.length) {
+      const desde = Math.min(...pend.map(p => p.desde)) - 2000
+      const conhecidos = new Set(lista.map(b => b.id))
+      const novos = arquivos.filter(a => a.mtimeMs >= desde && !conhecidos.has(a.name.replace(/\.live\.json$/, '')))
+      const vivos = (await Promise.all(novos.map(async a => ({ a, v: await ler(a.name) }))))
+        .filter(x => x.v && (x.v.inicio ?? 0) >= desde)
+        .sort((x, y) => (x.v!.inicio ?? 0) - (y.v!.inicio ?? 0))
+      let usados = 0
+      for (const { a, v } of vivos.slice(0, pend.length)) {
+        await novaBarra($, deVivo({
+          id: v!.id, provedor: prov, modelo: v!.modelo ?? prov, acao: 'começando', estado: 'rodando', inicio: v!.inicio ?? Date.now(),
+        } as BarraAgente, v!, a.mtimeMs))
+        usados++
+      }
+      if (usados) {
+        let tirar = usados
+        await update($, esperando, l => l.filter(x => !(x.provedor === prov && tirar-- > 0)))
+      }
+      // pedido sem arquivo depois de 2 min (servidor antigo, ou o job nem começou): desiste
+      await update($, esperando, l => l.filter(x => Date.now() - x.desde < 120000))
+    }
+    for (const b of rodando) {
+      const a = arquivos.find(x => x.name === `${b.id}.live.json`)
+      if (!a || a.mtimeMs === b.liveMtime) continue
+      const v = await ler(a.name)
+      if (!v) continue
+      if (prov === 'Codex' && typeof v.limites?.semanal === 'number' && (v.em ?? 0) >= (semanalCodexVivo?.em ?? 0)) {
+        semanalCodexVivo = { semanal: v.limites.semanal, em: v.em ?? Date.now() }
+      }
+      await mudarBarra($, b.id, x => deVivo(x, v, a.mtimeMs))
+      // terminou: lê a cota de novo para a subida chegar à barra
+      if (v.estado && v.estado !== 'rodando') void medirAgente($, prov).then(() => contarSemanal($))
+    }
+  }
+}
+
+async function voltaDasBarras($: EngineInterface) {
+  const [lista, esperam] = await Promise.all([read($, barras), read($, esperando)])
+  if (!lista.length && !esperam.length) return
+  await lerVivos($)
+  await contarSemanal($)
+}
+
+// Tokens que pesam no limite (sem as leituras de cache): de cada subagente na barra dele, do loop principal à parte.
+const pesoDe = (f: Fatias) => f.input + f.output + f.escrito
+async function contarTokens($: EngineInterface, agentId: string | undefined, f: Fatias, esforco?: string) {
+  if (!agentId) {
+    tokensPrincipal += pesoDe(f)
+    return
+  }
+  await mudarBarra($, agentId, b => ({ ...b, tokens: b.tokens + pesoDe(f), esforco: esforco ?? b.esforco }))
 }
 
 async function somar($: EngineInterface, f: Fatias, modelo: string) {
@@ -1601,6 +1817,7 @@ export const register: Register = on => {
     await lerResposta($)
     await verParado($)
     $.clock.every(30000, () => void verParado($))
+    $.clock.every(2000, () => void voltaDasBarras($))
     await $.command.register({ name: 'funstats', description: 'Show or hide the usage stats pane' })
     // Mantém os números do Gemini frescos enquanto o painel está aberto.
     $.clock.every(4000, () => {
@@ -1611,21 +1828,47 @@ export const register: Register = on => {
     return next(e)
   })
 
-  // Gemini ou Codex: mede a cota antes do primeiro uso da rodada e de novo quando a chamada termina.
+  // Subagente do Claude: a ferramenta vira a ação da barra, e TaskCreate/TaskUpdate/TodoWrite viram o "3/7".
+  // Job do Gemini ou do Codex: fica esperando o .live.json dele aparecer. Gemini ou Codex: mede a cota antes e depois.
   on('tool.call', async ($, e, next) => {
-    const agente = agenteDe(e as unknown as Record<string, unknown>)
+    const x = e as unknown as Record<string, any>
+    if (x.agentId) {
+      const acao = acaoDaFerramenta(x)
+      await mudarBarra($, String(x.agentId), b => {
+        const c = contarTarefas(b, x)
+        return acao ? { ...c, acao } : c
+      })
+    }
+    const job = FERRAMENTA_JOB.test(String(x.tool ?? ''))
+    if (job) {
+      const provedor: 'Gemini' | 'Codex' = /gemini/i.test(String(x.tool)) ? 'Gemini' : 'Codex'
+      await update($, esperando, l => [...l, { provedor, desde: Date.now() }])
+    }
+    const agente = agenteDe(x)
     if (!agente) return next(e)
-    try {
-      await comecarRodada($, agente)
-    } catch {
-      // sem leitura agora: a caixinha aparece na próxima medição
+    if (job) {
+      try {
+        await medirAgente($, agente)
+      } catch {
+        // sem leitura agora: a base vem da próxima medição
+      }
     }
     const r = await next(e)
-    // espera a leitura (o agy /usage responde na hora): quando o resultado volta, a caixinha já tem o gasto da chamada
     try {
       await medirAgente($, agente)
     } catch {
       // sem leitura: fica a do relógio de 30s
+    }
+    void voltaDasBarras($)
+    return r
+  })
+
+  // Subagente do Claude que começa: ganha uma barra, e o prompt pede a lista de tarefas que vira o "3/7".
+  on('agent.spawn', async ($, e, next) => {
+    const pedir = !('resume' in e && e.resume) && !e.workflow && !e.fork ? { ...e, prompt: e.prompt + PEDIDO_TAREFAS } : e
+    const r = await next(pedir)
+    if ('agentId' in r && r.agentId) {
+      await novaBarra($, { id: r.agentId, provedor: 'Claude', modelo: r.model, acao: 'começando', estado: 'rodando', inicio: Date.now() })
     }
     return r
   })
@@ -1668,6 +1911,7 @@ export const register: Register = on => {
       turnosContados.add(e.turnId)
       if (turnosContados.size > 50) turnosContados.delete(turnosContados.values().next().value as string) // turno abortado nunca chega ao turn.complete
       await somar($, f, e.model)
+      await contarTokens($, e.agentId, f, typeof e.effort === 'string' ? e.effort : undefined)
       if (!e.agentId) {
         await update($, fatias, () => f)
         await update($, piso, p => p ?? soma(f))
@@ -1684,12 +1928,17 @@ export const register: Register = on => {
     if (e.usage && !turnosContados.has(e.turnId)) {
       const f = deUso(e.usage)
       await somar($, f, e.usage.model)
+      await contarTokens($, e.agentId, f)
       if (!e.agentId) {
         await update($, fatias, () => f)
         await update($, piso, p => p ?? soma(f))
       }
     }
     turnosContados.delete(e.turnId)
+    if (e.agentId) {
+      const estado = e.reason === 'answer' ? 'concluido' : e.reason === 'aborted' ? 'parado' : 'erro'
+      await mudarBarra($, e.agentId, b => ({ ...b, estado, fim: Date.now(), acao: estado === 'concluido' ? 'concluído' : estado }))
+    }
     if (!e.agentId) {
       await update($, mensagens, n => n + 1)
       await guardarResposta($)
@@ -1726,6 +1975,7 @@ export const register: Register = on => {
     }
     const l: Limite[] = e.rateLimits.map(x => ({ kind: x.kind, percentUsed: x.percentUsed, resetsAt: x.resetsAt }))
     await update($, limites, () => l)
+    await contarSemanal($)
     return next(e)
   })
 
@@ -1745,7 +1995,7 @@ export const register: Register = on => {
 
     // Everything is read at once and next(e) is asked last: while Claude works the band redraws many times a second,
     // and a slow draw that asked next(e) first left the band without the meter whenever a newer redraw cut it short.
-    const [lidas, m, t, gasto, estimativa, usadas, lims, gerando, contente, agora, base, msgs, fechouEm, plano, tokSeg, respondeuEm, estaParado, paradoFechou, sid, codex, run] = await Promise.all([
+    const [lidas, m, t, gasto, estimativa, usadas, lims, gerando, contente, agora, base, msgs, fechouEm, plano, tokSeg, respondeuEm, estaParado, paradoFechou, sid, codex, barrasLidas] = await Promise.all([
       read($, fatias),
       read($, medida),
       read($, totais),
@@ -1766,7 +2016,7 @@ export const register: Register = on => {
       read($, paradoFechado),
       $.session.id().catch(() => ''),
       read($, cotasCodex),
-      read($, rodada),
+      read($, barras),
     ])
 
     // Sempre visível: antes da primeira resposta (e depois do Clear) desenha o funmeter inteiro zerado, com o mascote animado.
@@ -1922,30 +2172,30 @@ export const register: Register = on => {
       </Box>
       <Box key="rodape" flexDirection="row" columnGap={2} alignItems="center" justifyContent="space-between">
             <Box key="agentes" flexDirection="row" flexWrap="wrap" columnGap={1} alignItems="center" flexGrow={1} flexShrink={1} minWidth={0}>
-              {/* Uma caixinha por agente usado nesta rodada, só com o que ele gastou desde a medição de antes; o ✕ fecha. */}
-              {[
-                { nome: 'Gemini', cor: AZUL, fundo: '#1A2738', lista: plano as Cota[] },
-                { nome: 'Codex', cor: VERDE_AGUA, fundo: '#142D2A', lista: codex as Cota[] },
-              ]
-                .filter(g => run?.agentes.includes(g.nome))
-                .map(g => ({ ...g, lista: gastoNaRodada(g.lista, run?.inicio ?? {}, g.nome) }))
-                .filter(g => g.lista.length > 0)
-                .map(g => (
-                  // Fundo tingido em vez de borda: a caixinha ocupa uma linha só.
-                  <Box key={`agente-${g.nome}`} flexDirection="row" columnGap={1} alignItems="center" flexShrink={0} backgroundColor={g.fundo} paddingX={1}>
-                    <Text color={g.cor} bold>
-                      {run?.nomes?.[g.nome] ?? g.nome}
-                    </Text>
-                    {g.lista.map((c: Cota) => (
-                      <Box key={`${c.nome}-${c.janela}`} flexDirection="row" columnGap={1} alignItems="center" flexShrink={0}>
-                        <Text dimColor>{c.nome === g.nome ? c.janela : `${c.nome} ${c.janela}`}</Text>
-                        {Svg && <Svg source={barrinha(c.usado, g.cor)} alt={`${c.nome} ${c.janela} ${Math.round(c.usado * 100)}%`} width={COTA_W} height={COTA_H} />}
-                        <Text color={g.cor}>{Math.round(c.usado * 100)}%</Text>
-                      </Box>
-                    ))}
-                    <Button key={`fechar-${g.nome}`} plain label="✕" onPress={() => fecharAgente($, g.nome)} />
-                  </Box>
-                ))}
+              {/* Uma barra por agente (subagente do Claude, job do Gemini ou do Codex): nome do modelo, esforço, ação, tarefas,
+                  o tubo do semanal (base de quando começou + o que ele gastou) e o ✕. Visual provisório: o look final é do Fable. */}
+              {barrasLidas
+                .filter(b => !b.fechada)
+                .map(b => {
+                  const cor = COR_PROVEDOR[b.provedor]
+                  const pct = b.gasto * 100
+                  const num = pct >= 0.05 ? `+${pct < 10 ? pct.toFixed(1) : Math.round(pct)}%` : b.estado !== 'rodando' && b.tokens > 0 ? '<1%' : '+0%'
+                  const marca = b.estado === 'concluido' ? '✓' : b.estado === 'rodando' ? '●' : b.estado === 'limite' ? '⏳' : '✗'
+                  const extra = b.tarefas ? `${b.tarefas.feitas}/${b.tarefas.total}` : b.imagens ? `${b.imagens.prontas}/${b.imagens.total} img` : ''
+                  const acao = b.estado === 'limite' && b.tentaDeNovo ? `sem cota até ${b.tentaDeNovo}` : b.acao
+                  return (
+                    <Box key={`agente-${b.id}`} flexDirection="row" columnGap={1} alignItems="center" flexShrink={1} minWidth={0} backgroundColor={FUNDO_PROVEDOR[b.provedor]} paddingX={1}>
+                      <Text color={b.estado === 'erro' ? VERMELHO : cor}>{marca}</Text>
+                      <Text color={cor} bold>{b.nome}</Text>
+                      {b.esforco ? <Text dimColor>{b.esforco}</Text> : null}
+                      <Text wrap="truncate-end">{acao}</Text>
+                      {extra ? <Text dimColor>{extra}</Text> : null}
+                      {Svg && <Svg source={barrinha(Math.min(1, (b.base ?? 0) + b.gasto), cor)} alt={`${b.nome}: weekly ${Math.round(((b.base ?? 0) + b.gasto) * 100)}%, this agent ${num}`} width={COTA_W} height={COTA_H} />}
+                      <Text color={cor}>{num}</Text>
+                      <Button key={`fechar-${b.id}`} plain label="✕" onPress={() => fecharBarra($, b.id)} />
+                    </Box>
+                  )
+                })}
               {usadas.length > 0 && <Text dimColor wrap="truncate-end">Skills: {listaSkills}</Text>}
             </Box>
           <Box flexDirection="row" columnGap={1} flexShrink={0}>

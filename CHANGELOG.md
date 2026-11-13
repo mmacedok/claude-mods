@@ -1,5 +1,12 @@
 # FunMeter changelog
 
+## 0.8.0 (2026-11-13)
+
+- Agent bars get their final look: one row per agent with a glass tube for its provider's weekly limit. The matte part is the weekly use when the agent began; the bright part on top is what the agent added, with a white divider and a pointer so even 1% reads. While the agent runs the tube ripples, glows and shimmers; done, error, stopped and out-of-quota each have their own colour.
+- Agent rows only show for agents in use: a finished one leaves by itself after 10 minutes (or at once with its close button). At most four rows show; the rest are counted.
+- The flasks and the battery are redrawn wider, with a collar, feet and a shared shelf, inside one framed panel; the buttons sit under them in a 2×2 grid.
+- The metrics line counts the agents and how many are active.
+
 ## 0.7.0 (2026-11-13)
 
 - Agent bars replace the agent boxes: one bar per Claude subagent and per Gemini or Codex job, named after its model (Hydrogen, Sol, Haiku; "Sol 2" when one repeats), with its effort, what it is doing now, its task count (3/7) and a close button.

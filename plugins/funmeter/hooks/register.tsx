@@ -879,22 +879,15 @@ function tubo(fCru: Fatias, janelaCrua: number, larguraCrua: number): string {
   )
 }
 
-// A barrinha discreta da cota do Gemini: só o trilho azul que enche conforme o plano é consumido.
 const AZUL = '#4FA8FF'
-const COTA_W = 28
-const COTA_H = 5
-const barrinha = (usado: number, cor = AZUL) =>
-  `<svg xmlns="http://www.w3.org/2000/svg" width="${COTA_W}" height="${COTA_H}" viewBox="0 0 ${COTA_W} ${COTA_H}">` +
-  `<rect width="${COTA_W}" height="${COTA_H}" rx="2.5" fill="${cor}" fill-opacity=".18"/>` +
-  `<rect width="${(Math.min(1, Math.max(0, usado)) * COTA_W).toFixed(2)}" height="${COTA_H}" rx="2.5" fill="${cor}" fill-opacity=".9"/></svg>`
 // O Codex (plano ChatGPT) tem a sua cor: um verde-água que não se confunde com os géis nem com o azul do Gemini.
 const VERDE_AGUA = '#2DD4BF'
 const COR_PROVEDOR = { Claude: LARANJA, Gemini: AZUL, Codex: VERDE_AGUA } as const
-const FUNDO_PROVEDOR = { Claude: '#33231D', Gemini: '#1A2738', Codex: '#142D2A' } as const
 
 // Os frascos dos limites do Claude (5h e semana) e a bateria do dia: mesmo tamanho, mesmo vidro e mesmo metal.
-const VT_W = 58
-const VT_H = 74
+const VT_W = 60
+const VT_H = 84
+const PRATELEIRA = 66 // onde os pés pousam
 
 // A cor do gel anda com o uso: verde vazio, passa pelo amarelo e pelo laranja e chega ao vermelho cheio.
 // Gira o matiz em vez de misturar RGB, que no meio do caminho daria um marrom apagado.
@@ -933,7 +926,12 @@ const pecaDeMetal = (x: number, y: number, w: number, h: number) =>
   `<rect x="${x}" y="${y}" width="${w}" height="${n1(h)}" rx="1.8" fill="url(#m)"/>` +
   `<rect x="${x + 1}" y="${n1(y + 0.6)}" width="${w - 2}" height=".9" rx=".45" fill="#fff" fill-opacity=".5"/>` +
   `<rect x="${x + 0.5}" y="${n1(y + h - 1.3)}" width="${w - 1}" height="1.3" rx=".6" fill="#14191d" fill-opacity=".5"/>`
-const rotuloDoFrasco = (texto: string, tamanho: number, cor: string, base = VT_H - 1) =>
+// Dois pés de metal e a prateleira: ela vai de ponta a ponta do desenho, então frascos vizinhos formam uma só.
+const pesEPrateleira = (xE: number, xD: number, y: number) =>
+  [xE - 2.5, xD - 3.5].map(x => `<rect x="${x}" y="${n1(y)}" width="6" height="${n1(PRATELEIRA - y + 0.4)}" rx="1" fill="url(#m)"/>`).join('') +
+  `<rect x="0" y="${PRATELEIRA}" width="${VT_W}" height="3" fill="#8f9aa1"/><rect x="0" y="${PRATELEIRA}" width="${VT_W}" height=".9" fill="#f3f7f9" fill-opacity=".8"/>` +
+  `<rect x="0" y="${PRATELEIRA + 2.1}" width="${VT_W}" height=".9" fill="#14191d" fill-opacity=".55"/>`
+const rotuloDoFrasco = (texto: string, tamanho: number, cor: string, base = VT_H - 2.5) =>
   `<text x="${VT_W / 2}" y="${base}" text-anchor="middle" font-size="${tamanho}" font-weight="600" font-family="system-ui,sans-serif" fill="${cor}">${texto}</text>`
 // O líquido tem volume: sombreado de cilindro na horizontal e, por cima, claro junto à superfície e escuro no fundo.
 const corDoLiquido = (cor: string, nivel: number, fundo: number, sombra = -0.6) =>
@@ -946,12 +944,12 @@ const corDoLiquido = (cor: string, nivel: number, fundo: number, sombra = -0.6) 
 function tuboVertical(rotulo: string, usado: number): string {
   const pct = Math.max(0, Math.min(100, Math.round(Number.isFinite(usado) ? usado : 0)))
   const cor = corDoUso(pct)
-  const xE = 17
-  const xD = 41
+  const xE = 15
+  const xD = 45
   const cx = (xE + xD) / 2
-  const yT = 6
-  const yB = 56
-  const R = 4
+  const yT = 8
+  const yB = 57
+  const R = 5
   const nivel = yB - (pct / 100) * (yB - yT)
   const altura = yB - nivel
   const vidro = `M${xE} ${yT}V${yB - R}Q${xE} ${yB} ${xE + R} ${yB}H${xD - R}Q${xD} ${yB} ${xD} ${yB - R}V${yT}`
@@ -1028,9 +1026,11 @@ function tuboVertical(rotulo: string, usado: number): string {
     `<path d="${vidro}" fill="none" stroke="#d6ecf7" stroke-opacity=".75" stroke-width="1.2"/>` +
     `<rect x="${xE + 2.2}" y="${yT + 2}" width="2.2" height="${yB - yT - 8}" rx="1.1" fill="url(#e)"/>` +
     `<rect x="${xD - 3.4}" y="${yT + 5}" width="1" height="${yB - yT - 14}" rx=".5" fill="#fff" fill-opacity=".2"/>` +
-    pecaDeMetal(xE - 3.5, 0, xD - xE + 7, yT) +
+    pecaDeMetal(xE - 4, 0, xD - xE + 8, 5) +
+    pecaDeMetal(xE - 1.8, 5, xD - xE + 3.6, yT - 5) +
     `<path d="M${cx - 2.4} ${yT}h4.8l-1.2 1.6h-2.4z" fill="#394147"/>` +
-    pecaDeMetal(xE - 3.5, yB + 0.8, xD - xE + 7, 5.4) +
+    pesEPrateleira(xE, xD, yB + 4.6) +
+    pecaDeMetal(xE - 4, yB + 0.8, xD - xE + 8, 4.6) +
     rotuloDoFrasco(`${rotulo} ${pct}%`, 13, '#ecece6') +
     `</svg>`
   )
@@ -1047,11 +1047,11 @@ function bateria(rotulo: string, restante: number): string {
   const dourada = numero > 100
   const fraca = carga <= BATERIA_FRACA
   const cor = dourada ? OURO : corDoUso(100 - carga)
-  const xE = 17
-  const xD = 41
+  const xE = 15
+  const xD = 45
   const cx = (xE + xD) / 2
   const yT = 9
-  const yB = 58
+  const yB = 57
   const nivel = yB - (carga / 100) * (yB - yT)
   const crista = (a: number) => `M${xE} ${n1(nivel + a)}Q${xE + 6} ${n1(nivel + a - 1.2)} ${cx} ${n1(nivel)}T${xD} ${n1(nivel - a)}`
   const corpo = (a: number) => `${crista(a)}V${yB}H${xE}Z`
@@ -1109,17 +1109,89 @@ function bateria(rotulo: string, restante: number): string {
     `<clipPath id="d"><rect x="${xE}" y="${yT}" width="${xD - xE}" height="${yB - yT}" rx="2.6"/></clipPath>` +
     `<clipPath id="c"><rect x="${xE}" y="${n1(nivel)}" width="${xD - xE}" height="${n1(yB - nivel)}"/></clipPath></defs>` +
     luz +
-    pecaDeMetal(cx - 5.5, 2, 11, yT - 4) +
+    pesEPrateleira(xE, xD, yB + 1.4) +
+    pecaDeMetal(cx - 6.5, 2.4, 13, yT - 4) +
     `<rect x="${xE - 1.6}" y="${yT - 1.6}" width="${xD - xE + 3.2}" height="${yB - yT + 3.2}" rx="4.4" fill="#161c21" stroke="${contorno}" stroke-width="1.5">${pisca}</rect>` +
     `<rect x="${xE}" y="${yT}" width="${xD - xE}" height="${yB - yT}" rx="2.6" fill="#070b0e"/>` +
     `<g clip-path="url(#d)">${energia}<path d="${celulas}" stroke="#0b1116" stroke-opacity=".5" stroke-width="1.1" fill="none"/></g>` +
     raio +
     `<rect x="${xE + 2}" y="${yT + 2.5}" width="2" height="${yB - yT - 9}" rx="1" fill="url(#e)" opacity=".8"/>` +
     estrelas +
-    rotuloDoFrasco(texto, tamanhoTexto, corTexto, VT_H - 3.5) +
+    rotuloDoFrasco(texto, tamanhoTexto, corTexto) +
     `</svg>`
   )
 }
+
+// O tubo de cada agente: uma cápsula de vidro deitada que mostra o limite semanal do provedor dele.
+// A parte fosca é o semanal de quando o agente começou (a base); a parte viva, por cima, é o que ele gastou.
+// A divisa tem um fio branco e uma setinha fora do vidro, e o gasto nunca fica mais fino que 3px: lê-se mesmo com 1%.
+// Rodando, o tubo tem vida mesmo sem gasto (o semanal anda de 1 em 1%): a ponta ondula, um clarão pulsa e um brilho atravessa o vidro.
+const AG_W = 132
+const AG_H = 18
+const MOLDURA = '#3A4046'
+const COR_ESTADO: Partial<Record<BarraAgente['estado'], string>> = { erro: VERMELHO, parado: '#8C9196', limite: '#E8B931' }
+function tuboAgente(provedor: BarraAgente['provedor'], estado: BarraAgente['estado'], baseCrua: number | null, gastoCru: number): string {
+  const entre = (v: number) => Math.max(0, Math.min(1, Number.isFinite(v) ? v : 0))
+  const cor = COR_PROVEDOR[provedor]
+  const viva = COR_ESTADO[estado] ?? cor
+  const rodando = estado === 'rodando'
+  const x0 = 3
+  const x1 = AG_W - 3
+  const yT = 3
+  const yB = AG_H - 3
+  const alt = yB - yT
+  const util = x1 - x0
+  const meio = AG_H / 2
+  const base = entre(baseCrua ?? 0)
+  const gasto = Math.min(entre(gastoCru), 1 - base)
+  const larg = Math.max(gasto * util, rodando || gasto > 0 ? 3 : 0)
+  const xb = Math.min(x0 + base * util, x1 - larg) // no fim do tubo a divisa recua para o gasto caber
+  const xg = xb + larg
+  const borda = (a: number) => `M${n1(xb)} ${yT}H${n1(xg + a)}Q${n1(xg + a + 2.4)} ${meio} ${n1(xg - a)} ${yB}H${n1(xb)}Z`
+  const bolha = (cy: number, r: number, dur: number) =>
+    `<circle cy="${cy}" r="${r}" fill="#fff" opacity="0"><animate attributeName="cx" dur="${dur}s" repeatCount="indefinite" values="${n1(xb + 2)};${n1(xg - 3)}"/>` +
+    `<animate attributeName="opacity" dur="${dur}s" repeatCount="indefinite" keyTimes="0;.15;.8;1" values="0;.7;.7;0"/></circle>`
+  const liquido =
+    larg > 0
+      ? `<path fill="url(#g)" d="${borda(0)}">${rodando ? vaivem(borda, 1.2, 2.4) : ''}` +
+        (estado === 'limite' ? `<animate attributeName="opacity" dur="2.4s" repeatCount="indefinite" ${SUAVE} values="1;.45;1"/>` : '') +
+        `</path>` +
+        (rodando && larg > 16 ? bolha(meio - 2, 0.9, 2.8) + bolha(meio + 2.4, 0.7, 3.7) + bolha(meio, 1.1, 4.9) : '')
+      : ''
+  const brilho = rodando
+    ? `<rect y="${yT}" width="26" height="${alt}" fill="url(#s)"><animateTransform attributeName="transform" type="translate" dur="3.2s" repeatCount="indefinite" keyTimes="0;.65;1" values="${x0 - 26} 0;${x1} 0;${x1} 0"/></rect>`
+    : ''
+  const halo = rodando
+    ? `<rect x="${n1(xb - 2)}" y="1" width="${n1(larg + 4)}" height="${AG_H - 2}" rx="5" fill="${viva}" filter="url(#b)"><animate attributeName="opacity" dur="1.8s" repeatCount="indefinite" ${SUAVE} values=".25;.9;.25"/></rect>`
+    : ''
+  const divisa =
+    base > 0
+      ? `<rect x="${n1(xb - 0.6)}" y="${yT}" width="1.2" height="${alt}" fill="#fff" fill-opacity=".95"/>`
+      : ''
+  const seta = base > 0 ? `<path d="M${n1(xb - 2.6)} 0h5.2l-2.6 2.8z" fill="${tom(cor, 0.55)}"/>` : ''
+  const marcas = [0.25, 0.5, 0.75].map(f => `M${n1(x0 + f * util)} ${yB - 3}V${yB}`).join('')
+  const aro = estado === 'erro' ? VERMELHO : 'url(#r)'
+  return (
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${AG_W}" height="${AG_H}" viewBox="0 0 ${AG_W} ${AG_H}"><defs>` +
+    `<linearGradient id="g" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="${tom(viva, 0.5)}"/><stop offset=".45" stop-color="${viva}"/><stop offset="1" stop-color="${tom(viva, -0.45)}"/></linearGradient>` +
+    `<linearGradient id="r" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#f1f6f8"/><stop offset=".5" stop-color="#7d8a92"/><stop offset="1" stop-color="#4a555c"/></linearGradient>` +
+    `<linearGradient id="s" x1="0" x2="1" y1="0" y2="0"><stop offset="0" stop-color="#fff" stop-opacity="0"/><stop offset=".5" stop-color="#fff" stop-opacity=".4"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>` +
+    `<filter id="b" filterUnits="userSpaceOnUse" x="0" y="0" width="${AG_W}" height="${AG_H}"><feGaussianBlur stdDeviation="2"/></filter>` +
+    `<clipPath id="c"><rect x="${x0}" y="${yT}" width="${util}" height="${alt}" rx="${alt / 2}"/></clipPath></defs>` +
+    halo +
+    `<rect x="${x0 - 1.2}" y="${yT - 1.2}" width="${util + 2.4}" height="${alt + 2.4}" rx="${alt / 2 + 1.2}" fill="#070b0e" stroke="${aro}" stroke-width="1.2"${baseCrua === null ? ' stroke-dasharray="3 2"' : ''}/>` +
+    `<g clip-path="url(#c)">` +
+    (base > 0 ? `<rect x="${x0}" y="${yT}" width="${n1(xb - x0)}" height="${alt}" fill="${tom(cor, -0.55)}"/><rect x="${x0}" y="${yT}" width="${n1(xb - x0)}" height="${n1(alt / 2)}" fill="#fff" fill-opacity=".06"/>` : '') +
+    liquido +
+    divisa +
+    brilho +
+    `<path d="${marcas}" stroke="#fff" stroke-opacity=".3" stroke-width=".8" fill="none"/>` +
+    `<rect x="${x0 + 5}" y="${yT + 1.4}" width="${util - 10}" height="1.5" rx=".75" fill="#fff" fill-opacity=".3"/></g>` +
+    seta +
+    `</svg>`
+  )
+}
+
 
 // O painel Stats: uso por modelo nesta sessão e os jobs do Gemini.
 const PAINEL_STATS = 'stats'
@@ -1327,6 +1399,8 @@ const PASTA_LIVE: Record<'Gemini' | 'Codex', string> = {
 }
 const FERRAMENTA_JOB = /^mcp__(gemini__gemini_(start|run)|codex__codex_(start|tarefa))$/
 const BARRAS_MAX = 12
+const AGENTES_VISIVEIS = 4
+const SOME_DEPOIS_MS = 10 * 60 * 1000 // a barra de um agente que acabou sai sozinha depois disto
 const RECENTE_MS = 3 * 60 * 1000 // uma subida do semanal logo depois do fim ainda é do agente que acabou
 const ESFORCOS = ['low', 'medium', 'high', 'xhigh', 'max']
 
@@ -2071,6 +2145,9 @@ export const register: Register = on => {
         : `Good time for a handoff: context at ${percent}%`
     // O desenho nasce um pouco mais largo que o espaço; sem `width`, o app o encolhe até a vaga e o tubo encosta no x%.
     const tuboW = Math.max(220, Math.min(1400, Math.round((e.props.bodyColumns ?? 100) * 7.6)))
+    // só os agentes em uso: os que rodam e os que acabaram há pouco (o +x% deles ainda interessa)
+    const abertas = barrasLidas.filter(b => !b.fechada && (b.estado === 'rodando' || b.fim === undefined || agora - b.fim < SOME_DEPOIS_MS))
+    const ativas = abertas.filter(b => b.estado === 'rodando').length
     const listaSkills =
       usadas.length === 0
         ? 'none'
@@ -2102,10 +2179,8 @@ export const register: Register = on => {
             <Svg source={mascote(modo)} alt="Claude mascot" width={COLUNAS * CEL} height={LINHAS * CEL} />
           </Box>
         )}
-      {/* À direita do mascote: em cima as medidas e os frascos, embaixo um rodapé com os agentes e os botões.
-          Os botões são mais largos que os frascos; na mesma coluna deixavam um buraco entre o tubo e os frascos. */}
-      <Box key="corpo" flexDirection="column" flexGrow={1} flexShrink={1} minWidth={0} rowGap={1}>
-      <Box key="cima" flexDirection="row" columnGap={2} alignItems="center">
+      {/* À direita do mascote: no meio o tubo, as medidas e uma linha por agente; à direita o painel com os frascos e os botões. */}
+      <Box key="corpo" flexDirection="row" columnGap={2} alignItems="center" flexGrow={1} flexShrink={1} minWidth={0}>
       <Box key="medidas" flexDirection="column" flexGrow={1} flexShrink={1} minWidth={0}>
         <Box flexDirection="row" gap={1} alignItems="center">
           {Svg ? (
@@ -2137,7 +2212,7 @@ export const register: Register = on => {
                 </Text>
               ))}
             </Box>
-            {/* Segunda linha: o que se mede da conversa (acerto do cache, custo, velocidade, quando o limite volta). */}
+            {/* Segunda linha: o que se mede da conversa (acerto do cache, custo, velocidade, quando o limite volta, os agentes). */}
             <Box key="metricas" flexDirection="row" flexWrap="wrap" columnGap={2}>
               {acerto(t) !== null && (
                 <Text>
@@ -2160,8 +2235,56 @@ export const register: Register = on => {
                   5h{falta(cincoHoras.resetsAt, agora)}
                 </Text>
               )}
+              {abertas.length > 0 && (
+                <Text key="resumo-agentes" dimColor>
+                  {abertas.length} {abertas.length === 1 ? 'agent' : 'agents'} · {ativas} active
+                </Text>
+              )}
             </Box>
+            {/* Uma linha por agente em uso (subagente do Claude, job do Gemini ou do Codex): nome do modelo, esforço, ação, tarefas,
+                o tubo do semanal (a base de quando começou, fosca, e o que ele gastou, vivo) e o ✕. Some sozinha um tempo depois de acabar. */}
+            {abertas.length > 0 && (
+              <Box key="agentes" flexDirection="column" marginTop={1}>
+                {abertas.slice(0, AGENTES_VISIVEIS).map(b => {
+                  const cor = COR_PROVEDOR[b.provedor]
+                  const pct = b.gasto * 100
+                  const mais = pct >= 0.05 ? `+${pct < 10 ? pct.toFixed(1) : Math.round(pct)}%` : b.estado !== 'rodando' && b.tokens > 0 ? '<1%' : '+0%'
+                  const total = b.base === null ? '–' : `${Math.round(Math.min(1, b.base + b.gasto) * 100)}%`
+                  const marca = b.estado === 'concluido' ? '✓' : b.estado === 'rodando' ? '●' : b.estado === 'limite' ? '⏳' : '✗'
+                  const corMarca = b.estado === 'concluido' ? '#7BD63A' : b.estado === 'erro' ? VERMELHO : b.estado === 'parado' ? '#8C9196' : b.estado === 'limite' ? '#E8B931' : cor
+                  const extra = b.tarefas ? `${b.tarefas.feitas}/${b.tarefas.total}` : b.imagens ? `${b.imagens.prontas}/${b.imagens.total} img` : ''
+                  const acao = b.estado === 'limite' && b.tentaDeNovo ? `sem cota até ${b.tentaDeNovo}` : b.acao
+                  return (
+                    <Box key={`agente-${b.id}`} flexDirection="row" columnGap={1} alignItems="center" minWidth={0} {...(Svg ? { borderStyle: 'round', borderColor: MOLDURA, paddingX: 1 } : {})}>
+                      <Text color={corMarca}>{marca}</Text>
+                      <Text color={cor} bold>{b.nome}</Text>
+                      {b.esforco ? <Text dimColor>{b.esforco}</Text> : null}
+                      <Text dimColor>·</Text>
+                      <Box flexGrow={1} flexShrink={1} minWidth={0}>
+                        <Text wrap="truncate-end">{acao}</Text>
+                      </Box>
+                      {extra ? <Text dimColor>{extra}</Text> : null}
+                      {Svg && (
+                        <Svg
+                          source={comFase(`${sid}:ag:${b.id}`, tuboAgente(b.provedor, b.estado, b.base, b.gasto), agora)}
+                          alt={`${b.nome}: weekly limit ${total}, this agent ${mais}`}
+                          width={AG_W}
+                          height={AG_H}
+                        />
+                      )}
+                      <Text bold>{total}</Text>
+                      <Text color={cor}>{mais}</Text>
+                      <Button key={`fechar-${b.id}`} plain dimColor label="✕" onPress={() => fecharBarra($, b.id)} />
+                    </Box>
+                  )
+                })}
+                {abertas.length > AGENTES_VISIVEIS && <Text key="mais-agentes" dimColor>+{abertas.length - AGENTES_VISIVEIS} more</Text>}
+              </Box>
+            )}
+            {usadas.length > 0 && <Text dimColor wrap="truncate-end">Skills: {listaSkills}</Text>}
       </Box>
+      {/* O painel: os frascos dos limites e a bateria numa prateleira, e os botões em grade embaixo. */}
+      <Box key="painel" flexDirection="column" alignItems="center" flexShrink={0} rowGap={Svg ? 0 : 1} {...(Svg ? { borderStyle: 'round', borderColor: MOLDURA, paddingX: 1 } : {})}>
           {Svg && (cincoHoras || semana) && (
             <Box key="tubos-limite" flexDirection="row" alignItems="center" flexShrink={0}>
               {cincoHoras && <Svg source={comFase(`${sid}:5h`, tuboVertical('5h', cincoHoras.percentUsed), agora)} alt={`5 hour limit ${cincoHoras.percentUsed}%`} width={VT_W} height={VT_H} />}
@@ -2169,38 +2292,11 @@ export const register: Register = on => {
               {semana && <Svg source={comFase(`${sid}:wk`, tuboVertical('wk', semana.percentUsed), agora)} alt={`Weekly limit ${semana.percentUsed}%`} width={VT_W} height={VT_H} />}
             </Box>
           )}
-      </Box>
-      <Box key="rodape" flexDirection="row" columnGap={2} alignItems="center" justifyContent="space-between">
-            <Box key="agentes" flexDirection="row" flexWrap="wrap" columnGap={1} alignItems="center" flexGrow={1} flexShrink={1} minWidth={0}>
-              {/* Uma barra por agente (subagente do Claude, job do Gemini ou do Codex): nome do modelo, esforço, ação, tarefas,
-                  o tubo do semanal (base de quando começou + o que ele gastou) e o ✕. Visual provisório: o look final é do Fable. */}
-              {barrasLidas
-                .filter(b => !b.fechada)
-                .map(b => {
-                  const cor = COR_PROVEDOR[b.provedor]
-                  const pct = b.gasto * 100
-                  const num = pct >= 0.05 ? `+${pct < 10 ? pct.toFixed(1) : Math.round(pct)}%` : b.estado !== 'rodando' && b.tokens > 0 ? '<1%' : '+0%'
-                  const marca = b.estado === 'concluido' ? '✓' : b.estado === 'rodando' ? '●' : b.estado === 'limite' ? '⏳' : '✗'
-                  const extra = b.tarefas ? `${b.tarefas.feitas}/${b.tarefas.total}` : b.imagens ? `${b.imagens.prontas}/${b.imagens.total} img` : ''
-                  const acao = b.estado === 'limite' && b.tentaDeNovo ? `sem cota até ${b.tentaDeNovo}` : b.acao
-                  return (
-                    <Box key={`agente-${b.id}`} flexDirection="row" columnGap={1} alignItems="center" flexShrink={1} minWidth={0} backgroundColor={FUNDO_PROVEDOR[b.provedor]} paddingX={1}>
-                      <Text color={b.estado === 'erro' ? VERMELHO : cor}>{marca}</Text>
-                      <Text color={cor} bold>{b.nome}</Text>
-                      {b.esforco ? <Text dimColor>{b.esforco}</Text> : null}
-                      <Text wrap="truncate-end">{acao}</Text>
-                      {extra ? <Text dimColor>{extra}</Text> : null}
-                      {Svg && <Svg source={barrinha(Math.min(1, (b.base ?? 0) + b.gasto), cor)} alt={`${b.nome}: weekly ${Math.round(((b.base ?? 0) + b.gasto) * 100)}%, this agent ${num}`} width={COTA_W} height={COTA_H} />}
-                      <Text color={cor}>{num}</Text>
-                      <Button key={`fechar-${b.id}`} plain label="✕" onPress={() => fecharBarra($, b.id)} />
-                    </Box>
-                  )
-                })}
-              {usadas.length > 0 && <Text dimColor wrap="truncate-end">Skills: {listaSkills}</Text>}
-            </Box>
-          <Box flexDirection="row" columnGap={1} flexShrink={0}>
+          <Box key="botoes-1" flexDirection="row" columnGap={1} justifyContent="center">
             <Button key="mods" label="Mods" onPress={() => $.ui.open({ id: "mods", title: "Mods" })} />
             <Button key="stats" label="Stats" onPress={() => void alternarStats($)} />
+          </Box>
+          <Box key="botoes-2" flexDirection="row" columnGap={1} justifyContent="center">
             <Button key="clear" label="Clear" onPress={() => limpar($)} />
             <Button
               key="handoff"

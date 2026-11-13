@@ -115,7 +115,7 @@ precisa ler só o fim do arquivo (via `$.process.run` ou o arquivo de status).
    Fontes do semanal: Claude `session.measure` → `rateLimits` (`seven_day`); Gemini `cotas` (`wk`, balde Argon se o modelo for Argon);
    Codex `limites.semanal` do `.live.json` (senão `cotasCodex`).
    Visual provisório no `rodape` (chave `agente-<id>`, ✕ `fechar-<id>`); o Fable troca.
-4. **Visual — Fable.** Ver abaixo.
+4. **Visual — FEITO (0.8.0).** `tuboAgente` em `register.tsx`; uma linha por agente na coluna do meio; frascos, bateria e botões no `painel`. Prévia: `docs/agentes-previa.png`. Barra de agente que acabou some depois de 10 min (`SOME_DEPOIS_MS`); no máximo 4 linhas (`AGENTES_VISIVEIS`).
 5. Testes, versão 0.7.0, commit, push, `claude plugin update funmeter@claude-mods`.
 
 ## Para o Fable (fase 4: o look)

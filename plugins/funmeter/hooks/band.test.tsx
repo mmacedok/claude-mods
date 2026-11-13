@@ -164,6 +164,7 @@ test('a Claude subagent gets a bar named after its model, with tasks, action and
   await semana(30) // a subida inteira foi do subagente: só ele gastou tokens no meio
   const ui = await $.ui.mount({ plugin: 'funmeter', surface: 'desktop', component: 'AbovePrompt', props: PROPS })
   expect(await ui.find({ key: 'agente-a1' })).toBeDefined()
+  expect(await ui.find({ key: 'painel' })).toBeDefined() // os frascos e os botões moram no mesmo painel
   const textos = ((await ui.findAll({ type: 'Text' })) as any[]).map(x => x.text)
   expect(textos).toContain('Haiku')
   expect(textos).toContain('1/2')

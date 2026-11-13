@@ -8,7 +8,7 @@
       "name": "funmeter",
       "source": "./plugins/funmeter",
       "description": "A live band above the prompt: context by token type, cost, cache hit, speed and plan limits, with a mascot and a Handoff button",
-      "version": "0.7.0"
+      "version": "0.8.0"
     }
   ]
 }

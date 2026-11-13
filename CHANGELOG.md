@@ -1,5 +1,9 @@
 # FunMeter changelog
 
+## 0.8.12 (2026-11-13)
+
+- Codex's colour is a shocking neon yellow (#FFF01F) instead of green.
+
 ## 0.8.11 (2026-11-13)
 
 - Agent flasks: each agent in use is a flask like the 5h/wk ones, in the row beside them, in its provider's fixed colour (Gemini blue, Codex green, Claude orange), filled up to the weekly limit. The part already used when the agent started is matte and still; what the agent spent is bright, with the glow, bubbles and the drop while it runs. The label is the agent's name and the weekly %, red/grey/gold on error/stopped/limit; ✕ beside it closes the bar.

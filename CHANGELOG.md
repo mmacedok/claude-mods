@@ -1,5 +1,9 @@
 # FunMeter changelog
 
+## 0.8.13 (2026-11-13)
+
+- The agent flask's label reads name, weekly % and, in the bright colour, +what that agent alone consumed ("Sol 43% +3%"). Names longer than 7 letters are cut.
+
 ## 0.8.12 (2026-11-13)
 
 - Codex's colour is a shocking neon yellow (#FFF01F) instead of green.

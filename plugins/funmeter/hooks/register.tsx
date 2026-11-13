@@ -978,7 +978,7 @@ const corDoLiquido = (cor: string, nivel: number, fundo: number, sombra = -0.6) 
 
 // Frasco de vidro com fundo arredondado: uma gota cresce no bico, cai acelerando e respinga no gel, que brilha e solta bolhas.
 // Nos frascos dos agentes: cor fixa do provedor, a parte de antes do agente (base) fosca e parada, e a gota só enquanto ele roda.
-type OpcoesFrasco = { cor?: string; base?: number; vivo?: boolean; corRotulo?: string }
+type OpcoesFrasco = { cor?: string; base?: number; vivo?: boolean; corRotulo?: string; extra?: string; corExtra?: string }
 function tuboVertical(rotulo: string, usado: number, opc: OpcoesFrasco = {}): string {
   const pct = Math.max(0, Math.min(100, Math.round(Number.isFinite(usado) ? usado : 0)))
   const cor = opc.cor ?? corDoUso(pct)
@@ -1082,7 +1082,7 @@ function tuboVertical(rotulo: string, usado: number, opc: OpcoesFrasco = {}): st
     `<path d="M${cx - 2.4} ${yT}h4.8l-1.2 1.6h-2.4z" fill="#394147"/>` +
     pesEPrateleira(xE, xD, yB + 4.6) +
     pecaDeMetal(xE - 5, yB + 0.8, xD - xE + 10, 5.6) +
-    rotuloDoFrasco(`${rotulo} ${pct}%`, Math.min(13, Math.floor(118 / Math.max(1, `${rotulo} ${pct}%`.length))), opc.corRotulo ?? '#ecece6') +
+    rotuloDoFrasco(`${rotulo} ${pct}%` + (opc.extra ? ` <tspan fill="${opc.corExtra ?? '#fff'}">${opc.extra}</tspan>` : ''), Math.min(13, Math.floor(118 / Math.max(1, `${rotulo} ${pct}% ${opc.extra ?? ''}`.trim().length))), opc.corRotulo ?? '#ecece6') +
     `</svg>`
   )
 }
@@ -1093,8 +1093,11 @@ function frascoAgente(b: BarraAgente): string {
   const base = b.base === null ? 0 : Math.max(0, Math.min(1, b.base))
   const total = Math.min(1, base + Math.max(0, b.gasto))
   const corRotulo = b.estado === 'erro' ? VERMELHO : b.estado === 'parado' ? '#8C9196' : b.estado === 'limite' ? '#E8B931' : tom(cor, 0.25)
-  const nome = b.nome.length > 9 ? b.nome.slice(0, 8) + '…' : b.nome
-  return tuboVertical(nome, total * 100, { cor, base: base * 100, vivo: b.estado === 'rodando', corRotulo })
+  const nome = b.nome.length > 7 ? b.nome.slice(0, 6) + '…' : b.nome
+  // + o que só este agente consumiu do semanal, na cor viva
+  const g = Math.max(0, b.gasto) * 100
+  const extra = g >= 1 ? `+${Math.round(g)}%` : g >= 0.05 ? `+${g.toFixed(1)}%` : '+0%'
+  return tuboVertical(nome, total * 100, { cor, base: base * 100, vivo: b.estado === 'rodando', corRotulo, extra, corExtra: tom(cor, 0.45) })
 }
 
 // A bateria do dia: começa em 100% mais o saldo do dia anterior e descarrega conforme se gasta a cota.

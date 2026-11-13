@@ -1,5 +1,10 @@
 # FunMeter changelog
 
+## 0.8.3 (2026-11-13)
+
+- Layout as in the mock-up: the tube and the measures on top, the mascot below them beside the agent rows, and the panel on the right.
+- The flasks and the battery are taller and further apart, on one shelf; the four buttons are back in a 2×2 grid, padded to the same width.
+
 ## 0.8.2 (2026-11-13)
 
 - Panel buttons: Mods, Stats and Clear spread across the panel, one under each flask, with Handoff centred below. The fixed-width columns are gone (the app does not stretch its buttons, so they left gaps).

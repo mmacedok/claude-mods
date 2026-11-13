@@ -885,9 +885,9 @@ const VERDE_AGUA = '#2DD4BF'
 const COR_PROVEDOR = { Claude: LARANJA, Gemini: AZUL, Codex: VERDE_AGUA } as const
 
 // Os frascos dos limites do Claude (5h e semana) e a bateria do dia: mesmo tamanho, mesmo vidro e mesmo metal.
-const VT_W = 60
-const VT_H = 84
-const PRATELEIRA = 66 // onde os pés pousam
+const VT_W = 66
+const VT_H = 104
+const PRATELEIRA = 86 // onde os pés pousam
 
 // A cor do gel anda com o uso: verde vazio, passa pelo amarelo e pelo laranja e chega ao vermelho cheio.
 // Gira o matiz em vez de misturar RGB, que no meio do caminho daria um marrom apagado.
@@ -945,10 +945,10 @@ function tuboVertical(rotulo: string, usado: number): string {
   const pct = Math.max(0, Math.min(100, Math.round(Number.isFinite(usado) ? usado : 0)))
   const cor = corDoUso(pct)
   const xE = 15
-  const xD = 45
+  const xD = 51
   const cx = (xE + xD) / 2
   const yT = 8
-  const yB = 57
+  const yB = 76
   const R = 5
   const nivel = yB - (pct / 100) * (yB - yT)
   const altura = yB - nivel
@@ -1047,11 +1047,12 @@ function bateria(rotulo: string, restante: number): string {
   const dourada = numero > 100
   const fraca = carga <= BATERIA_FRACA
   const cor = dourada ? OURO : corDoUso(100 - carga)
-  const xE = 15
-  const xD = 45
+  const xE = 18
+  const xD = 48
   const cx = (xE + xD) / 2
-  const yT = 9
-  const yB = 57
+  const yT = 12
+  const yB = 80
+  const yR = (yT + yB) / 2 - 25 // o raio fica no meio do corpo
   const nivel = yB - (carga / 100) * (yB - yT)
   const crista = (a: number) => `M${xE} ${n1(nivel + a)}Q${xE + 6} ${n1(nivel + a - 1.2)} ${cx} ${n1(nivel)}T${xD} ${n1(nivel - a)}`
   const corpo = (a: number) => `${crista(a)}V${yB}H${xE}Z`
@@ -1065,7 +1066,7 @@ function bateria(rotulo: string, restante: number): string {
         `<path fill="none" stroke="${tom(cor, 0.7)}" stroke-width="1.1" stroke-linecap="round" d="${crista(0.6)}">${vaivem(crista, 0.6, 3)}</path>`
       : ''
   const celulas = [0.25, 0.5, 0.75].map(f => `M${xE} ${n1(yB - f * (yB - yT))}H${xD}`).join('')
-  const formaDoRaio = `M${cx + 2} ${yT + 13}L${cx - 5} ${yT + 27}H${cx - 0.5}L${cx - 2} ${yT + 37}L${cx + 5} ${yT + 22}H${cx + 0.5}Z`
+  const formaDoRaio = `M${cx + 2} ${yR + 13}L${cx - 5} ${yR + 27}H${cx - 0.5}L${cx - 2} ${yR + 37}L${cx + 5} ${yR + 22}H${cx + 0.5}Z`
   // O raio tem um clarão desfocado por trás que respira junto com ele; sem carga, sobra só o contorno vermelho.
   const raio =
     carga > 0
@@ -1110,7 +1111,7 @@ function bateria(rotulo: string, restante: number): string {
     `<clipPath id="c"><rect x="${xE}" y="${n1(nivel)}" width="${xD - xE}" height="${n1(yB - nivel)}"/></clipPath></defs>` +
     luz +
     pesEPrateleira(xE, xD, yB + 1.4) +
-    pecaDeMetal(cx - 6.5, 2.4, 13, yT - 4) +
+    pecaDeMetal(cx - 6.5, 4.4, 13, yT - 6) +
     `<rect x="${xE - 1.6}" y="${yT - 1.6}" width="${xD - xE + 3.2}" height="${yB - yT + 3.2}" rx="4.4" fill="#161c21" stroke="${contorno}" stroke-width="1.5">${pisca}</rect>` +
     `<rect x="${xE}" y="${yT}" width="${xD - xE}" height="${yB - yT}" rx="2.6" fill="#070b0e"/>` +
     `<g clip-path="url(#d)">${energia}<path d="${celulas}" stroke="#0b1116" stroke-opacity=".5" stroke-width="1.1" fill="none"/></g>` +
@@ -1400,6 +1401,10 @@ const PASTA_LIVE: Record<'Gemini' | 'Codex', string> = {
 const FERRAMENTA_JOB = /^mcp__(gemini__gemini_(start|run)|codex__codex_(start|tarefa))$/
 const BARRAS_MAX = 12
 const AGENTES_VISIVEIS = 4
+// O app dá a cada botão a largura do rótulo. Espaços que não quebram dos dois lados deixam os quatro quase iguais;
+// o espaço de largura zero nas pontas impede que alguém os apare.
+const largo = (rotulo: string, antes: number, depois = antes) => `\u200B${'\u00A0'.repeat(antes)}${rotulo}${'\u00A0'.repeat(depois)}\u200B`
+const RECUO_MASCOTE = 10 // colunas de texto: o tubo começa onde acaba o mascote
 const SOME_DEPOIS_MS = 10 * 60 * 1000 // a barra de um agente que acabou sai sozinha depois disto
 const RECENTE_MS = 3 * 60 * 1000 // uma subida do semanal logo depois do fim ainda é do agente que acabou
 const ESFORCOS = ['low', 'medium', 'high', 'xhigh', 'max']
@@ -2173,15 +2178,11 @@ export const register: Register = on => {
           <Button key="fechar-aviso" plain label="✕" onPress={() => (avisoParado ? fecharParado($) : fecharAviso($))} />
         </Box>
       )}
-      <Box flexDirection="row" gap={1} alignItems="center">
-        {Svg && mascote(modo).length <= SVG_MAX && (
-          <Box key="mascote" flexShrink={0}>
-            <Svg source={mascote(modo)} alt="Claude mascot" width={COLUNAS * CEL} height={LINHAS * CEL} />
-          </Box>
-        )}
-      {/* À direita do mascote: no meio o tubo, as medidas e uma linha por agente; à direita o painel com os frascos e os botões. */}
-      <Box key="corpo" flexDirection="row" columnGap={2} alignItems="center" flexGrow={1} flexShrink={1} minWidth={0}>
-      <Box key="medidas" flexDirection="column" flexGrow={1} flexShrink={1} minWidth={0}>
+      <Box flexDirection="row" columnGap={2} alignItems="center">
+      {/* À esquerda: em cima o tubo e as medidas, recuados da largura do mascote; embaixo o mascote ao lado das linhas dos agentes.
+          À direita o painel com os frascos e os botões. */}
+      <Box key="esquerda" flexDirection="column" flexGrow={1} flexShrink={1} minWidth={0} rowGap={1}>
+      <Box key="medidas" flexDirection="column" minWidth={0} marginLeft={Svg ? RECUO_MASCOTE : 0}>
         <Box flexDirection="row" gap={1} alignItems="center">
           {Svg ? (
             <Box key="tubo" flexGrow={1} flexShrink={1} minWidth={0}>
@@ -2241,10 +2242,18 @@ export const register: Register = on => {
                 </Text>
               )}
             </Box>
+      </Box>
+      <Box key="baixo" flexDirection="row" columnGap={1} alignItems="center">
+        {Svg && mascote(modo).length <= SVG_MAX && (
+          <Box key="mascote" flexShrink={0}>
+            <Svg source={mascote(modo)} alt="Claude mascot" width={COLUNAS * CEL} height={LINHAS * CEL} />
+          </Box>
+        )}
+        <Box key="ao-lado" flexDirection="column" flexGrow={1} flexShrink={1} minWidth={0}>
             {/* Uma linha por agente em uso (subagente do Claude, job do Gemini ou do Codex): nome do modelo, esforço, ação, tarefas,
                 o tubo do semanal (a base de quando começou, fosca, e o que ele gastou, vivo) e o ✕. Some sozinha um tempo depois de acabar. */}
             {abertas.length > 0 && (
-              <Box key="agentes" flexDirection="column" marginTop={1}>
+              <Box key="agentes" flexDirection="column">
                 {abertas.slice(0, AGENTES_VISIVEIS).map(b => {
                   const cor = COR_PROVEDOR[b.provedor]
                   const pct = b.gasto * 100
@@ -2282,6 +2291,8 @@ export const register: Register = on => {
               </Box>
             )}
             {usadas.length > 0 && <Text dimColor wrap="truncate-end">Skills: {listaSkills}</Text>}
+        </Box>
+      </Box>
       </Box>
       {/* O painel: os frascos dos limites e a bateria numa prateleira, e os botões em grade embaixo. */}
       <Box key="painel" flexDirection="column" alignItems="stretch" flexShrink={0} rowGap={1} {...(Svg ? { borderStyle: 'round', borderColor: MOLDURA, paddingX: 1 } : {})}>
@@ -2293,19 +2304,18 @@ export const register: Register = on => {
             </Box>
           )}
           <Box key="botoes-1" flexDirection="row" columnGap={1} justifyContent="space-between">
-            <Button key="mods" label="Mods" onPress={() => $.ui.open({ id: "mods", title: "Mods" })} />
-            <Button key="stats" label="Stats" onPress={() => void alternarStats($)} />
-            <Button key="clear" label="Clear" onPress={() => limpar($)} />
+            <Button key="mods" label={largo('Mods', 5)} onPress={() => $.ui.open({ id: "mods", title: "Mods" })} />
+            <Button key="stats" label={largo('Stats', 6, 5)} onPress={() => void alternarStats($)} />
           </Box>
-          <Box key="botoes-2" flexDirection="row" columnGap={1} justifyContent="center">
+          <Box key="botoes-2" flexDirection="row" columnGap={1} justifyContent="space-between">
+            <Button key="clear" label={largo('Clear', 5)} onPress={() => limpar($)} />
             <Button
               key="handoff"
               variant="primary"
-              label={gerando ? 'Writing handoff…' : 'Handoff'}
+              label={gerando ? 'Writing handoff…' : largo('Handoff', 3)}
               onPress={() => handoff($)}
             />
           </Box>
-      </Box>
       </Box>
       </Box>
       </Box>

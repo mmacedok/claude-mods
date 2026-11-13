@@ -1,5 +1,13 @@
 # FunMeter changelog
 
+## 0.8.8 (2026-11-13)
+
+- New look: chrome caps and bases, thick glass and a metal stand for the flasks and the battery; the context tube is a glossy liquid with a wavy edge, bubbles and coloured droplets; a soft glow on the liquids.
+- The flasks and the battery moved out of the right panel into a row beside the mascot, under the metrics, at 80% size: the band is shorter and the empty area is gone. The right panel keeps only the buttons.
+- The four buttons are cells of the same size, centred labels, rounded, with an even gap.
+- Agent rows are plain lines without an outline (a new agent design comes later).
+- The terminal never takes the Svg branch, even where a surface table lists Svg.
+
 ## 0.8.7 (2026-11-13)
 
 Data fixes from the review:

@@ -908,9 +908,9 @@ function tubo(fCru: Fatias, janelaCrua: number, larguraCrua: number): string {
 }
 
 const AZUL = '#4FA8FF'
-// O Codex (plano ChatGPT) tem a sua cor: um verde-água que não se confunde com os géis nem com o azul do Gemini.
-const VERDE_AGUA = '#2DD4BF'
-const COR_PROVEDOR = { Claude: LARANJA, Gemini: AZUL, Codex: VERDE_AGUA } as const
+// Cada provedor tem a sua cor fixa (escolha do Henrique): Gemini azul, Codex verde, Claude laranja.
+const VERDE_CODEX = '#3FD45E'
+const COR_PROVEDOR = { Claude: LARANJA, Gemini: AZUL, Codex: VERDE_CODEX } as const
 
 // Os frascos dos limites do Claude (5h e semana) e a bateria do dia: mesmo tamanho, mesmo vidro e mesmo metal.
 const VT_W = 66
@@ -977,9 +977,13 @@ const corDoLiquido = (cor: string, nivel: number, fundo: number, sombra = -0.6) 
   `<stop offset=".3" stop-color="#fff" stop-opacity="0"/><stop offset=".6" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".38"/></linearGradient>`
 
 // Frasco de vidro com fundo arredondado: uma gota cresce no bico, cai acelerando e respinga no gel, que brilha e solta bolhas.
-function tuboVertical(rotulo: string, usado: number): string {
+// Nos frascos dos agentes: cor fixa do provedor, a parte de antes do agente (base) fosca e parada, e a gota só enquanto ele roda.
+type OpcoesFrasco = { cor?: string; base?: number; vivo?: boolean; corRotulo?: string }
+function tuboVertical(rotulo: string, usado: number, opc: OpcoesFrasco = {}): string {
   const pct = Math.max(0, Math.min(100, Math.round(Number.isFinite(usado) ? usado : 0)))
-  const cor = corDoUso(pct)
+  const cor = opc.cor ?? corDoUso(pct)
+  const vivo = opc.vivo ?? true
+  const temBase = opc.base !== undefined && Number.isFinite(opc.base) && opc.base > 0
   const xE = 15
   const xD = 51
   const cx = (xE + xD) / 2
@@ -988,6 +992,9 @@ function tuboVertical(rotulo: string, usado: number): string {
   const R = 5
   const nivel = yB - (pct / 100) * (yB - yT)
   const altura = yB - nivel
+  // a divisa entre a base (fosca) e o que o agente gastou (vivo); nunca acima da superfície
+  const nivelBase = temBase ? Math.max(nivel, yB - (Math.min(100, opc.base!) / 100) * (yB - yT)) : yB
+  const fundoBolha = temBase ? Math.max(nivel + 1, nivelBase - 1.5) : yB - 2
   const vidro = `M${xE} ${yT}V${yB - R}Q${xE} ${yB} ${xE + R} ${yB}H${xD - R}Q${xD} ${yB} ${xD} ${yB - R}V${yT}`
   const crista = (a: number) => `M${xE} ${n1(nivel + a)}Q${xE + 6} ${n1(nivel + a - 1.6)} ${cx} ${n1(nivel)}T${xD} ${n1(nivel - a)}`
   const corpo = (a: number) => `${crista(a)}V${yB}H${xE}Z`
@@ -1000,7 +1007,7 @@ function tuboVertical(rotulo: string, usado: number): string {
   const y0 = yT + 1.2
   const yFim = Math.max(y0, nivel - 4)
   const gota =
-    pct < 100
+    pct < 100 && vivo
       ? `<g><animateTransform attributeName="transform" type="translate" dur="${T}s" repeatCount="indefinite" calcMode="spline" keyTimes="0;.42;.8;.81;1" keySplines="0 0 1 1;.6 0 1 .75;0 0 1 1;0 0 1 1" values="${cx} ${n1(y0)};${cx} ${n1(y0)};${cx} ${n1(yFim)};${cx} ${n1(yFim)};${cx} ${n1(y0)}"/>` +
         `<path d="M0 0C.9 1.6 2 3 2 4.2A2 2 0 1 1 -2 4.2C-2 3 -.9 1.6 0 0Z" fill="${tom(cor, 0.22)}">` +
         `<animateTransform attributeName="transform" type="scale" dur="${T}s" repeatCount="indefinite" keyTimes="0;.42;.8;.81;1" values="0 0;1 1;.8 1.3;0 0;0 0"/></path></g>`
@@ -1008,7 +1015,7 @@ function tuboVertical(rotulo: string, usado: number): string {
   // No impacto: uma ondinha abre na superfície e dois respingos saltam em arco.
   // O último intervalo devolve as posições/raio à origem com opacidade já zerada.
   const impacto =
-    pct < 100
+    pct < 100 && vivo
       ? `<ellipse cx="${cx}" cy="${n1(nivel)}" rx="0" ry="1" fill="none" stroke="${tom(cor, 0.7)}" stroke-width=".9" opacity="0">` +
         `<animate attributeName="rx" dur="${T}s" repeatCount="indefinite" keyTimes="0;.8;.98;1" values="0;0;10;0"/>` +
         `<animate attributeName="opacity" dur="${T}s" repeatCount="indefinite" keyTimes="0;.8;.82;.98;1" values="0;0;.95;0;0"/></ellipse>` +
@@ -1028,16 +1035,21 @@ function tuboVertical(rotulo: string, usado: number): string {
   // Bolhas sobem do fundo até a superfície; cada uma espera um pouco diferente antes de sair.
   // O último 1% do ciclo é a volta invisível ao fundo.
   const bolha = (x: number, r: number, dur: number, k: number) =>
-    `<circle cx="${x}" cy="${yB - 2}" r="${r}" fill="#fff" opacity="0">` +
-    `<animate attributeName="cy" dur="${dur}s" repeatCount="indefinite" keyTimes="0;${k.toFixed(2)};.99;1" values="${yB - 2};${yB - 2};${n1(nivel + 2)};${yB - 2}"/>` +
+    `<circle cx="${x}" cy="${n1(fundoBolha)}" r="${r}" fill="#fff" opacity="0">` +
+    `<animate attributeName="cy" dur="${dur}s" repeatCount="indefinite" keyTimes="0;${k.toFixed(2)};.99;1" values="${n1(fundoBolha)};${n1(fundoBolha)};${n1(nivel + 2)};${n1(fundoBolha)}"/>` +
     `<animate attributeName="opacity" dur="${dur}s" repeatCount="indefinite" keyTimes="0;${k.toFixed(2)};${(k + 0.06).toFixed(2)};.93;.99;1" values="0;0;.65;.65;0;0"/></circle>`
-  const bolhas = altura > 12 ? bolha(xE + 6, 1, 3.4, 0.1) + bolha(cx + 2, 0.8, 4.6, 0.35) + bolha(xD - 5, 1.2, 5.8, 0.2) : ''
+  const bolhas = fundoBolha - nivel > 12 ? bolha(xE + 6, 1, 3.4, 0.1) + bolha(cx + 2, 0.8, 4.6, 0.35) + bolha(xD - 5, 1.2, 5.8, 0.2) : ''
   const gel =
     pct > 0
       ? `<path fill="${tom(cor, -0.38)}" d="${tras(1)}">${vaivem(tras, 1, 4)}</path>` +
         gota +
         `<path fill="url(#g)" d="${corpo(0.8)}">${vaivem(corpo, 0.8, 3)}</path>` +
         `<path fill="url(#p)" d="${corpo(0.8)}">${vaivem(corpo, 0.8, 3)}</path>` +
+        (temBase
+          ? `<rect x="${xE}" y="${n1(nivelBase)}" width="${xD - xE}" height="${n1(yB - nivelBase)}" fill="${tom(cor, -0.62)}" opacity=".9"/>` +
+            `<rect x="${xE}" y="${n1(nivelBase)}" width="${xD - xE}" height="${n1(yB - nivelBase)}" fill="url(#p)" opacity=".6"/>` +
+            (nivelBase - nivel > 0.6 ? `<path d="M${xE} ${n1(nivelBase)}H${xD}" stroke="#fff" stroke-opacity=".55" stroke-width=".8"/>` : '')
+          : '') +
         bolhas +
         `<path fill="none" stroke="${tom(cor, 0.62)}" stroke-width="1.1" stroke-linecap="round" d="${crista(0.8)}">${vaivem(crista, 0.8, 3)}</path>`
       : gota
@@ -1045,7 +1057,7 @@ function tuboVertical(rotulo: string, usado: number): string {
   const alerta = pct >= 80
   const luz =
     pct > 0
-      ? `<rect x="${xE}" y="${n1(nivel)}" width="${xD - xE}" height="${n1(altura)}" rx="3" fill="${cor}" opacity="${alerta ? 0.6 : 0.42}" filter="url(#b)">` +
+      ? `<rect x="${xE}" y="${n1(nivel)}" width="${xD - xE}" height="${n1(Math.max(2, (temBase ? nivelBase : yB) - nivel))}" rx="3" fill="${cor}" opacity="${alerta ? 0.6 : temBase ? 0.55 : 0.42}" filter="url(#b)">` +
         (alerta ? `<animate attributeName="opacity" dur="1.6s" repeatCount="indefinite" ${SUAVE} values=".3;.85;.3"/>` : '') +
         `</rect>`
       : ''
@@ -1070,9 +1082,19 @@ function tuboVertical(rotulo: string, usado: number): string {
     `<path d="M${cx - 2.4} ${yT}h4.8l-1.2 1.6h-2.4z" fill="#394147"/>` +
     pesEPrateleira(xE, xD, yB + 4.6) +
     pecaDeMetal(xE - 5, yB + 0.8, xD - xE + 10, 5.6) +
-    rotuloDoFrasco(`${rotulo} ${pct}%`, 13, '#ecece6') +
+    rotuloDoFrasco(`${rotulo} ${pct}%`, Math.min(13, Math.floor(118 / Math.max(1, `${rotulo} ${pct}%`.length))), opc.corRotulo ?? '#ecece6') +
     `</svg>`
   )
+}
+
+// O frasco de um agente: a mesma peça dos limites, na cor do provedor, cheio até o semanal (base + o que ele gastou).
+function frascoAgente(b: BarraAgente): string {
+  const cor = COR_PROVEDOR[b.provedor]
+  const base = b.base === null ? 0 : Math.max(0, Math.min(1, b.base))
+  const total = Math.min(1, base + Math.max(0, b.gasto))
+  const corRotulo = b.estado === 'erro' ? VERMELHO : b.estado === 'parado' ? '#8C9196' : b.estado === 'limite' ? '#E8B931' : tom(cor, 0.25)
+  const nome = b.nome.length > 9 ? b.nome.slice(0, 8) + '…' : b.nome
+  return tuboVertical(nome, total * 100, { cor, base: base * 100, vivo: b.estado === 'rodando', corRotulo })
 }
 
 // A bateria do dia: começa em 100% mais o saldo do dia anterior e descarrega conforme se gasta a cota.
@@ -2482,8 +2504,35 @@ export const register: Register = on => {
               {semana && <Svg source={comFase(`${sid}:wk`, guardado(`wk:${semana.percentUsed}`, () => tuboVertical('wk', semana.percentUsed)), agora)} alt={`Weekly limit ${semana.percentUsed}%`} width={FRASCO_W} height={FRASCO_H} />}
             </Box>
           )}
+              {/* Um frasco por agente em uso, na cor do provedor; o ✕ fecha a barra. */}
+              {Svg && abertas.length > 0 && (
+                <Box key="frascos-agentes" flexDirection="row" alignItems="flex-end" columnGap={1} marginLeft={2} flexShrink={0}>
+                  {abertas.slice(0, AGENTES_VISIVEIS).map(b => {
+                    const pct = b.gasto * 100
+                    const mais = pct >= 0.05 ? `+${pct < 10 ? pct.toFixed(1) : Math.round(pct)}%` : b.estado !== 'rodando' && b.tokens > 0 ? '<1%' : '+0%'
+                    const total = b.base === null ? '–' : `${Math.round(Math.min(1, b.base + b.gasto) * 100)}%`
+                    const marca = b.estado === 'concluido' ? '✓' : b.estado === 'rodando' ? '●' : b.estado === 'limite' ? '⏳' : '✗'
+                    const extra = b.tarefas ? `${b.tarefas.feitas}/${b.tarefas.total}` : b.imagens ? `${b.imagens.prontas}/${b.imagens.total} img` : ''
+                    const acao = b.estado === 'limite' && b.tentaDeNovo ? `sem cota até ${b.tentaDeNovo}` : b.acao
+                    return (
+                      <Box key={`agente-${b.id}`} flexDirection="row" alignItems="flex-start" flexShrink={0}>
+                        {Svg ? (
+                        <Svg
+                          source={comFase(`${sid}:ag:${b.id}`, guardado(`fa:${b.provedor}:${b.estado}:${b.base}:${b.gasto}:${b.nome}`, () => frascoAgente(b)), agora)}
+                          alt={`${marca} ${b.nome} ${b.esforco ?? ''} · ${acao}${extra ? ` · ${extra}` : ''} · weekly ${total}, this agent ${mais}`}
+                          width={FRASCO_W}
+                          height={FRASCO_H}
+                        />
+                        ) : null}
+                        <Button key={`fechar-${b.id}`} plain dimColor label="✕" onPress={() => fecharBarra($, b.id)} />
+                      </Box>
+                    )
+                  })}
+                  {abertas.length > AGENTES_VISIVEIS && <Text key="mais-agentes" dimColor>+{abertas.length - AGENTES_VISIVEIS}</Text>}
+                </Box>
+              )}
             </Box>
-            {abertas.length > 0 && (
+            {!Svg && abertas.length > 0 && (
               <Box key="agentes" flexDirection="column" rowGap={0}>
                 {abertas.slice(0, AGENTES_VISIVEIS).map(b => {
                   const cor = COR_PROVEDOR[b.provedor]
@@ -2502,14 +2551,6 @@ export const register: Register = on => {
                       {b.esforco ? <Text dimColor>{b.esforco}</Text> : null}
                       <Box flexGrow={1} />
                       {extra ? <Text dimColor>{extra}</Text> : null}
-                      {Svg && (
-                        <Svg
-                          source={comFase(`${sid}:ag:${b.id}`, guardado(`ag:${b.provedor}:${b.estado}:${b.base}:${b.gasto}`, () => tuboAgente(b.provedor, b.estado, b.base, b.gasto)), agora)}
-                          alt={`${b.nome}: weekly limit ${total}, this agent ${mais}`}
-                          width={AG_W}
-                          height={AG_H}
-                        />
-                      )}
                       <Text bold>{total}</Text>
                       <Text color={cor}>{mais}</Text>
                       <Button key={`fechar-${b.id}`} plain dimColor label="✕" onPress={() => fecharBarra($, b.id)} />

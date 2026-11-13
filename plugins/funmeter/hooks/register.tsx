@@ -908,9 +908,9 @@ function tubo(fCru: Fatias, janelaCrua: number, larguraCrua: number): string {
 }
 
 const AZUL = '#4FA8FF'
-// Cada provedor tem a sua cor fixa (escolha do Henrique): Gemini azul, Codex amarelo-choque, Claude laranja.
-const AMARELO_CODEX = '#FFF01F'
-const COR_PROVEDOR = { Claude: LARANJA, Gemini: AZUL, Codex: AMARELO_CODEX } as const
+// Cada provedor tem a sua cor fixa (escolha do Henrique): Gemini azul, Codex verde (#00AD29, da amostra dele), Claude laranja.
+const VERDE_CODEX = '#00AD29'
+const COR_PROVEDOR = { Claude: LARANJA, Gemini: AZUL, Codex: VERDE_CODEX } as const
 
 // Os frascos dos limites do Claude (5h e semana) e a bateria do dia: mesmo tamanho, mesmo vidro e mesmo metal.
 const VT_W = 66

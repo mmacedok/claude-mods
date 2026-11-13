@@ -1,5 +1,9 @@
 # FunMeter changelog
 
+## 0.8.15 (2026-11-13)
+
+- Codex's colour is the green #00AD29.
+
 ## 0.8.14 (2026-11-13)
 
 - The ✕ that closes an agent flask is hidden over its top corner and shows only while the pointer is over that flask (no layout shift).

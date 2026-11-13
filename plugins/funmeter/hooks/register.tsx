@@ -2526,28 +2526,30 @@ export const register: Register = on => {
       </Box>
       </Box>
       {/* O painel: só os botões, em grade 2×2. */}
-      <Box key="painel" flexDirection="column" alignItems="stretch" alignSelf="flex-start" flexShrink={0} rowGap={.4} {...(Svg ? { width: PAINEL_COLUNAS, borderStyle: 'round', borderColor: MOLDURA, backgroundColor: '#252726', paddingX: 1 } : {})}>
-          {/* Células fixas e rótulos de nove caracteres dão a mesma área a todos os botões. */}
-          <Box key="botoes" flexDirection="column" alignItems="center" rowGap={.4}>
-            {[0, 1].map(linha => (
-              <Box key={`botoes-${linha + 1}`} flexDirection="row" columnGap={1} alignItems="center">
-                {(linha === 0 ? ['mods', 'stats'] as const : ['clear', 'handoff'] as const).map(id => {
-                  const principal = id === 'handoff'
-                  const rotulo = id === 'mods' ? 'Mods' : id === 'stats' ? 'Stats' : id === 'clear' ? 'Clear' : gerando ? 'Writing…' : 'Handoff'
-                  const folga = Math.max(0, 9 - rotulo.length)
-                  const label = Svg ? largo(rotulo, Math.floor(folga / 2), Math.ceil(folga / 2)) : rotulo
-                  return (
-                    <Box key={`celula-${id}`} flexDirection="row" width={Svg ? BOTAO_COLUNAS : undefined} height={Svg ? 1.6 : undefined} alignItems="center" justifyContent="center"
-                      {...(Svg ? { backgroundColor: principal ? '#f0f1ee' : '#484b49', borderStyle: 'round', borderColor: principal ? '#ffffff' : '#646965', hover: { backgroundColor: principal ? '#ffffff' : '#5a615b', borderColor: '#a0b2a6' } } : {})}>
-                      <Button key={id} plain={Svg ? true : undefined} variant={principal ? 'primary' : 'secondary'} label={label}
-                        onPress={() => id === 'mods' ? $.ui.open({ id: 'mods', title: 'Mods' }) : id === 'stats' ? void alternarStats($) : id === 'clear' ? limpar($) : handoff($)}>
-                        <Text color={Svg ? principal ? '#202422' : '#f2f4f1' : undefined} bold>{label}</Text>
-                      </Button>
-                    </Box>
-                  )
-                })}
+      <Box key="painel" flexDirection="column" alignItems="stretch" alignSelf="center" flexShrink={0} rowGap={.4} {...(Svg ? { borderStyle: 'round', borderColor: MOLDURA, backgroundColor: '#252726', paddingX: 1 } : {})}>
+          <Box key="botoes" flexDirection="column" alignItems="stretch" rowGap={1} minWidth={Svg ? 24 : undefined}>
+            {/* Button não aceita largura/flex. Células de base zero dividem cada linha; a coluna estica o botão na horizontal. */}
+            <Box key="botoes-1" flexDirection="row" alignItems="stretch" columnGap={1}>
+              <Box flexDirection="column" alignItems="stretch" flexGrow={1} flexShrink={1} minWidth={0} width={Svg ? 0 : undefined}>
+                <Button key="mods" label={Svg ? largo('Mods', 5) : largo('Mods', 4, 5)} onPress={() => $.ui.open({ id: "mods", title: "Mods" })} />
               </Box>
-            ))}
+              <Box flexDirection="column" alignItems="stretch" flexGrow={1} flexShrink={1} minWidth={0} width={Svg ? 0 : undefined}>
+                <Button key="stats" label={Svg ? largo('Stats', 6, 5) : largo('Stats', 4)} onPress={() => void alternarStats($)} />
+              </Box>
+            </Box>
+            <Box key="botoes-2" flexDirection="row" alignItems="stretch" columnGap={1}>
+              <Box flexDirection="column" alignItems="stretch" flexGrow={1} flexShrink={1} minWidth={0} width={Svg ? 0 : undefined}>
+                <Button key="clear" label={Svg ? largo('Clear', 5) : largo('Clear', 4)} onPress={() => limpar($)} />
+              </Box>
+              <Box flexDirection="column" alignItems="stretch" flexGrow={1} flexShrink={1} minWidth={0} width={Svg ? 0 : undefined}>
+                <Button
+                  key="handoff"
+                  variant="primary"
+                  label={gerando ? 'Writing handoff…' : largo('Handoff', 3)}
+                  onPress={() => handoff($)}
+                />
+              </Box>
+            </Box>
           </Box>
       </Box>
       </Box>

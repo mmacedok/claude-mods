@@ -1,5 +1,10 @@
 # FunMeter changelog
 
+## 0.8.9 (2026-11-13)
+
+- The buttons work again: back to plain native buttons (the label drawn as a Text inside the button, in a fixed cell, came out cut as "Mo…" and did not press). Labels padded to the same width, as in 0.8.7.
+- The button panel sits in the middle of the band's height instead of at the top.
+
 ## 0.8.8 (2026-11-13)
 
 - New look: chrome caps and bases, thick glass and a metal stand for the flasks and the battery; the context tube is a glossy liquid with a wavy edge, bubbles and coloured droplets; a soft glow on the liquids.

@@ -1,5 +1,18 @@
 # FunMeter changelog
 
+## 0.8.7 (2026-11-13)
+
+Data fixes from the review:
+
+- Codex rollouts above 4 MiB are read by their last 256 KiB (they froze the Codex quota), and a newest rollout without limits falls back to an older one.
+- Quota measuring no longer blocks tool calls: it runs after the call, only for real job tools or commands that start with the CLI, never for a denied or failed call, and concurrent reads share one run.
+- Weekly attribution: a weekly reset resets the running bars, the first rise after a start is counted, the fresher Codex reading wins, and the readers run one at a time.
+- Bars: a resumed subagent or a teammate's new turn reopens its bar; bars that stop without an end time get one and expire; the task request goes only to agent types that have tasks; a failed TaskCreate is not counted.
+- Pending jobs expire even when the live folder is missing and are dropped when the call is denied or fails.
+- Only a real answer counts as a reply and celebrates, and a new celebration cancels the previous timer; Clear also resets bars, pending jobs, weekly accounts and main-loop tokens, in parallel.
+- The bar polling sleeps when no agent is running or just finished; data timestamps use the engine clock.
+- 11 new tests (39 in all).
+
 ## 0.8.6 (2026-11-13)
 
 Fixes from a three-agent review:

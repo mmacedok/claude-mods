@@ -206,7 +206,7 @@ function mascoteTrabalhando(): string {
     `<rect x="-1.9" y="2.2" width="3.8" height="2.8" rx=".8" fill="#9a9a95" stroke="${TINTA}" stroke-width="1"/>` +
     `<circle cy="-1" r="3.9" fill="#FFD84A" stroke="${TINTA}" stroke-width="1.1"/><path d="M-1.8 -2.6Q-1.4 -3.8 0 -3.9" fill="none" stroke="#fff" stroke-width=".9" stroke-linecap="round"/></g></g>`
   return boneco({
-    respira: respirar(1.6),
+    respira: respirar(1.5),
     pos: pista('translate', T, [0, 0], [
       cena(0.1, ...repetir([[0, 0.8, 0.15], [0, 0, 0.15]], 9)),
       cena(3.9, [0, -4, 0.12, 'o'], [0, 0, 0.14, 'i']),
@@ -241,7 +241,7 @@ function mascoteFeliz(): string {
     .map(
       ([x, y, dx], k) =>
         `<g opacity="0">${pista('opacity', T, [0], [cena(0.5, [1, 0.05], [1, 1.0], [0, 0.25])])}<g>${pista('translate', T, [M_CX, 24], [cena(0.5, [x, y, 0.35, 'o'], [x + dx, 57, 0.95, 'i'])])}` +
-        `<rect x="-1.3" y="-.8" width="2.6" height="1.6" rx=".4" fill="${cores[k]}"><animateTransform attributeName="transform" type="rotate" dur="${0.5 + (k % 3) * 0.12}s" repeatCount="indefinite" values="0;360"/></rect></g></g>`,
+        `<rect x="-1.3" y="-.8" width="2.6" height="1.6" rx=".4" fill="${cores[k]}"><animateTransform attributeName="transform" type="rotate" dur="${arred(T / (5 - (k % 3)))}s" repeatCount="indefinite" values="0;360"/></rect></g></g>`,
     )
     .join('')
   const estrela = (x: number, y: number, r: number, em: number) => {
@@ -338,7 +338,7 @@ function mascoteParado(): string {
         `${p('opacity', [0], [cena(45.6, [1, 0.02], [1, 0.4], [0, 0.1])])}${p('translate', [x, 54], [cena(45.6, [x + dx * 5, 43, 0.22, 'o'], [x + dx * 10, 58, 0.3, 'i'])])}</rect>`,
     )
     .join('')
-  const pedala = (inverso: boolean): Passo[] => repetir(inverso ? [[0, 0, 0.0875], [0, -3, 0.0875]] : [[0, -3, 0.0875], [0, 0, 0.0875]], 4)
+  const pedala = (inverso: boolean): Passo[] => [...repetir(inverso ? [[0, 0, 0.0875], [0, -3, 0.0875]] : [[0, -3, 0.0875], [0, 0, 0.0875]], 4), [0, 0, 0.0875]]
 
   // -- espirro: duas tomadas de ar, o corpo dispara para a frente e as gotas voam
   const ATCHIM = 49.5 + 1.55
@@ -367,7 +367,7 @@ function mascoteParado(): string {
   const apertadoEm: [number, number][] = [[GALO + 0.03, 0.85], [ATCHIM, 0.85]]
 
   return boneco({
-    respira: respirar(3.2),
+    respira: respirar(3),
     pos: p('translate', [0, 0], [
       cena(14.5, [0, 0, 0.22], [0, -17, 0.36, 'o'], [0, -17.6, 0.12], [0, 0, 0.3, 'i']),
       cena(GALO, [0, 1.2, 0.07], [0, 0, 0.2]),
@@ -383,7 +383,7 @@ function mascoteParado(): string {
       cena(49.5, [-3, 0.3], [-1, 0.2], [-7, 0.35], [-8, 0.7], [13, 0.09, 'i'], [10, 0.5], [0, 0.5]),
       cena(54.2, [5, 1.2], [7, 1.5], [5, 1], [7, 1.1], [0, 0.1, 'o']),
     ]),
-    pirueta: p('rotate', [0], [cena(14.8, [360, 0.6], [0, 0.001, 'l'])]),
+    pirueta: p('rotate', [0], [cena(14.8, [360, 0.6], [0, 0, 'l'])]),
     amassa: p('scale', [1, 1], [
       cena(10, [1.05, 0.93, 0.35], [0.9, 1.16, 0.6, 'o'], [0.9, 1.16, 0.8], [1.07, 0.92, 0.2, 'i'], [0.98, 1.03, 0.18], [1, 1, 0.2]),
       cena(14.5, [1.15, 0.8, 0.22, 'o'], [0.87, 1.2, 0.1, 'o'], [0.96, 1.05, 0.26], [1, 1, 0.2], [0.9, 1.14, 0.2], [1.22, 0.72, 0.07, 'i'], [0.95, 1.07, 0.12, 'o'], [1.02, 0.98, 0.1], [1, 1, 0.1]),
@@ -688,6 +688,7 @@ function formaDoBlob(cx: number, cy: number, r: number, semente: number, t: numb
 }
 function blob(cx: number, cy: number, r: number, semente: number, dur: number, attrs: string, passos = 12): string {
   const quadros = Array.from({ length: passos + 1 }, (_, q) => formaDoBlob(cx, cy, r, semente, (q / passos) * 2 * Math.PI))
+  quadros[passos] = quadros[0] as string // fechamento exato, inclusive no arredondamento de -0.0
   return `<path ${attrs} d="${quadros[0]}"><animate attributeName="d" dur="${dur}s" repeatCount="indefinite" values="${quadros.join(';')}"/></path>`
 }
 
@@ -959,21 +960,23 @@ function tuboVertical(rotulo: string, usado: number): string {
   const tras = (a: number) => `M${xE} ${n1(nivel - 0.9 + a)}Q${xE + 6} ${n1(nivel - 0.9 + a + 1.6)} ${cx} ${n1(nivel - 0.9)}T${xD} ${n1(nivel - 0.9 - a)}V${yB}H${xE}Z`
 
   // A gota pende do bico crescendo a partir da ponta, solta-se, estica na queda e mergulha atrás da onda da frente.
+  // A volta ao bico acontece só depois de a escala zerar (.81); posição e escala fecham no mesmo T.
   const T = 2.6
   const y0 = yT + 1.2
   const yFim = Math.max(y0, nivel - 4)
   const gota =
     pct < 100
-      ? `<g><animateTransform attributeName="transform" type="translate" dur="${T}s" repeatCount="indefinite" calcMode="spline" keyTimes="0;.42;.8;1" keySplines="0 0 1 1;.6 0 1 .75;0 0 1 1" values="${cx} ${n1(y0)};${cx} ${n1(y0)};${cx} ${n1(yFim)};${cx} ${n1(yFim)}"/>` +
+      ? `<g><animateTransform attributeName="transform" type="translate" dur="${T}s" repeatCount="indefinite" calcMode="spline" keyTimes="0;.42;.8;.81;1" keySplines="0 0 1 1;.6 0 1 .75;0 0 1 1;0 0 1 1" values="${cx} ${n1(y0)};${cx} ${n1(y0)};${cx} ${n1(yFim)};${cx} ${n1(yFim)};${cx} ${n1(y0)}"/>` +
         `<path d="M0 0C.9 1.6 2 3 2 4.2A2 2 0 1 1 -2 4.2C-2 3 -.9 1.6 0 0Z" fill="${tom(cor, 0.22)}">` +
         `<animateTransform attributeName="transform" type="scale" dur="${T}s" repeatCount="indefinite" keyTimes="0;.42;.8;.81;1" values="0 0;1 1;.8 1.3;0 0;0 0"/></path></g>`
       : ''
   // No impacto: uma ondinha abre na superfície e dois respingos saltam em arco.
+  // O último intervalo devolve as posições/raio à origem com opacidade já zerada.
   const impacto =
     pct < 100
       ? `<ellipse cx="${cx}" cy="${n1(nivel)}" rx="0" ry="1" fill="none" stroke="${tom(cor, 0.7)}" stroke-width=".9" opacity="0">` +
-        `<animate attributeName="rx" dur="${T}s" repeatCount="indefinite" keyTimes="0;.8;1" values="0;0;10"/>` +
-        `<animate attributeName="opacity" dur="${T}s" repeatCount="indefinite" keyTimes="0;.8;.82;1" values="0;0;.95;0"/></ellipse>` +
+        `<animate attributeName="rx" dur="${T}s" repeatCount="indefinite" keyTimes="0;.8;.98;1" values="0;0;10;0"/>` +
+        `<animate attributeName="opacity" dur="${T}s" repeatCount="indefinite" keyTimes="0;.8;.82;.98;1" values="0;0;.95;0;0"/></ellipse>` +
         [
           { dx: -6, sobe: 6, r: 0.9 },
           { dx: 4.5, sobe: 3.5, r: 0.7 },
@@ -981,17 +984,18 @@ function tuboVertical(rotulo: string, usado: number): string {
           .map(
             s =>
               `<circle cx="${cx}" cy="${n1(nivel)}" r="${s.r}" fill="${tom(cor, 0.5)}" opacity="0">` +
-              `<animate attributeName="cx" dur="${T}s" repeatCount="indefinite" keyTimes="0;.8;1" values="${cx};${cx};${cx + s.dx}"/>` +
-              `<animate attributeName="cy" dur="${T}s" repeatCount="indefinite" calcMode="spline" keyTimes="0;.8;.9;1" keySplines="0 0 1 1;0 .6 .4 1;.6 0 1 .4" values="${n1(nivel)};${n1(nivel)};${n1(nivel - s.sobe)};${n1(nivel + 1)}"/>` +
-              `<animate attributeName="opacity" dur="${T}s" repeatCount="indefinite" keyTimes="0;.8;.81;.97;1" values="0;0;1;1;0"/></circle>`,
+              `<animate attributeName="cx" dur="${T}s" repeatCount="indefinite" keyTimes="0;.8;.99;1" values="${cx};${cx};${cx + s.dx};${cx}"/>` +
+              `<animate attributeName="cy" dur="${T}s" repeatCount="indefinite" calcMode="spline" keyTimes="0;.8;.9;.99;1" keySplines="0 0 1 1;0 .6 .4 1;.6 0 1 .4;0 0 1 1" values="${n1(nivel)};${n1(nivel)};${n1(nivel - s.sobe)};${n1(nivel + 1)};${n1(nivel)}"/>` +
+              `<animate attributeName="opacity" dur="${T}s" repeatCount="indefinite" keyTimes="0;.8;.81;.97;.99;1" values="0;0;1;1;0;0"/></circle>`,
           )
           .join('')
       : ''
   // Bolhas sobem do fundo até a superfície; cada uma espera um pouco diferente antes de sair.
+  // O último 1% do ciclo é a volta invisível ao fundo.
   const bolha = (x: number, r: number, dur: number, k: number) =>
     `<circle cx="${x}" cy="${yB - 2}" r="${r}" fill="#fff" opacity="0">` +
-    `<animate attributeName="cy" dur="${dur}s" repeatCount="indefinite" keyTimes="0;${k.toFixed(2)};1" values="${yB - 2};${yB - 2};${n1(nivel + 2)}"/>` +
-    `<animate attributeName="opacity" dur="${dur}s" repeatCount="indefinite" keyTimes="0;${k.toFixed(2)};${(k + 0.06).toFixed(2)};.93;1" values="0;0;.65;.65;0"/></circle>`
+    `<animate attributeName="cy" dur="${dur}s" repeatCount="indefinite" keyTimes="0;${k.toFixed(2)};.99;1" values="${yB - 2};${yB - 2};${n1(nivel + 2)};${yB - 2}"/>` +
+    `<animate attributeName="opacity" dur="${dur}s" repeatCount="indefinite" keyTimes="0;${k.toFixed(2)};${(k + 0.06).toFixed(2)};.93;.99;1" values="0;0;.65;.65;0;0"/></circle>`
   const bolhas = altura > 12 ? bolha(xE + 6, 1, 3.4, 0.1) + bolha(cx + 2, 0.8, 4.6, 0.35) + bolha(xD - 5, 1.2, 5.8, 0.2) : ''
   const gel =
     pct > 0
@@ -1057,12 +1061,14 @@ function bateria(rotulo: string, restante: number): string {
   const crista = (a: number) => `M${xE} ${n1(nivel + a)}Q${xE + 6} ${n1(nivel + a - 1.2)} ${cx} ${n1(nivel)}T${xD} ${n1(nivel - a)}`
   const corpo = (a: number) => `${crista(a)}V${yB}H${xE}Z`
   // A carga é luz, não líquido: superfície quase parada, uma faixa de claridade que sobe por ela e uma linha acesa no topo.
+  const T = dourada ? 2.4 : 3 // a faixa e seu apagamento usam o mesmo relógio
   const energia =
     carga > 0
       ? `<path fill="url(#g)" d="${corpo(0.6)}">${vaivem(corpo, 0.6, 3)}</path>` +
         `<path fill="url(#p)" d="${corpo(0.6)}">${vaivem(corpo, 0.6, 3)}</path>` +
         `<g clip-path="url(#c)"><rect x="${xE}" y="-12" width="${xD - xE}" height="12" fill="url(#s)">` +
-        `<animateTransform attributeName="transform" type="translate" dur="${dourada ? 2.2 : 3.6}s" repeatCount="indefinite" keyTimes="0;.55;1" values="0 ${yB + 12};0 ${n1(nivel)};0 ${n1(nivel)}"/></rect></g>` +
+        `<animateTransform attributeName="transform" type="translate" dur="${T}s" repeatCount="indefinite" keyTimes="0;.55;.99;1" values="0 ${yB + 12};0 ${n1(nivel)};0 ${n1(nivel)};0 ${yB + 12}"/>` +
+         `<animate attributeName="opacity" dur="${T}s" repeatCount="indefinite" keyTimes="0;.02;.53;.55;1" values="0;1;1;0;0"/></rect></g>` +
         `<path fill="none" stroke="${tom(cor, 0.7)}" stroke-width="1.1" stroke-linecap="round" d="${crista(0.6)}">${vaivem(crista, 0.6, 3)}</path>`
       : ''
   const celulas = [0.25, 0.5, 0.75].map(f => `M${xE} ${n1(yB - f * (yB - yT))}H${xD}`).join('')
@@ -1150,8 +1156,8 @@ function tuboAgente(provedor: BarraAgente['provedor'], estado: BarraAgente['esta
   const xg = xb + larg
   const borda = (a: number) => `M${n1(xb)} ${yT}H${n1(xg + a)}Q${n1(xg + a + 2.4)} ${meio} ${n1(xg - a)} ${yB}H${n1(xb)}Z`
   const bolha = (cy: number, r: number, dur: number) =>
-    `<circle cy="${cy}" r="${r}" fill="#fff" opacity="0"><animate attributeName="cx" dur="${dur}s" repeatCount="indefinite" values="${n1(xb + 2)};${n1(xg - 3)}"/>` +
-    `<animate attributeName="opacity" dur="${dur}s" repeatCount="indefinite" keyTimes="0;.15;.8;1" values="0;.7;.7;0"/></circle>`
+    `<circle cy="${cy}" r="${r}" fill="#fff" opacity="0"><animate attributeName="cx" dur="${dur}s" repeatCount="indefinite" keyTimes="0;.98;1" values="${n1(xb + 2)};${n1(xg - 3)};${n1(xb + 2)}"/>` +
+    `<animate attributeName="opacity" dur="${dur}s" repeatCount="indefinite" keyTimes="0;.15;.8;.98;1" values="0;.7;.7;0;0"/></circle>`
   const liquido =
     larg > 0
       ? `<path fill="url(#g)" d="${borda(0)}">${rodando ? vaivem(borda, 1.2, 2.4) : ''}` +
@@ -1159,11 +1165,13 @@ function tuboAgente(provedor: BarraAgente['provedor'], estado: BarraAgente['esta
         `</path>` +
         (rodando && larg > 16 ? bolha(meio - 2, 0.9, 2.8) + bolha(meio + 2.4, 0.7, 3.7) + bolha(meio, 1.1, 4.9) : '')
       : ''
+  const brilhoT = 4.8 // duas ondulações; a opacidade esconde toda a volta
   const brilho = rodando
-    ? `<rect y="${yT}" width="26" height="${alt}" fill="url(#s)"><animateTransform attributeName="transform" type="translate" dur="3.2s" repeatCount="indefinite" keyTimes="0;.65;1" values="${x0 - 26} 0;${x1} 0;${x1} 0"/></rect>`
+    ? `<rect y="${yT}" width="26" height="${alt}" fill="url(#s)"><animateTransform attributeName="transform" type="translate" dur="${brilhoT}s" repeatCount="indefinite" keyTimes="0;.65;.99;1" values="${x0 - 26} 0;${x1} 0;${x1} 0;${x0 - 26} 0"/>` +
+      `<animate attributeName="opacity" dur="${brilhoT}s" repeatCount="indefinite" keyTimes="0;.02;.63;.65;1" values="0;1;1;0;0"/></rect>`
     : ''
   const halo = rodando
-    ? `<rect x="${n1(xb - 2)}" y="1" width="${n1(larg + 4)}" height="${AG_H - 2}" rx="5" fill="${viva}" filter="url(#b)"><animate attributeName="opacity" dur="1.8s" repeatCount="indefinite" ${SUAVE} values=".25;.9;.25"/></rect>`
+    ? `<rect x="${n1(xb - 2)}" y="1" width="${n1(larg + 4)}" height="${AG_H - 2}" rx="5" fill="${viva}" filter="url(#b)"><animate attributeName="opacity" dur="2.4s" repeatCount="indefinite" ${SUAVE} values=".25;.9;.25"/></rect>`
     : ''
   const divisa =
     base > 0

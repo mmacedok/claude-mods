@@ -1,5 +1,11 @@
 # FunMeter changelog
 
+## 0.8.5 (2026-11-13)
+
+- Every animation is a seamless loop: the mascot's legs and spin, the flasks' drop, splash and bubbles, the battery's light band and the blobs end where they start (docs/checar-loops.cjs checks all of them).
+- The four buttons sit in a grid of equal cells that fills the panel; labels keep the padding as a fallback.
+- The band is aligned to the top, with the mascot at the bottom left; each agent's action goes on its own line under its tube instead of being cut with "…".
+
 ## 0.8.4 (2026-11-13)
 
 - The mascot sits on the left of one column (tube, measures, agent rows, skills) instead of leaving an empty corner above it; with agents it lines up with their rows, without them it sits in the middle.

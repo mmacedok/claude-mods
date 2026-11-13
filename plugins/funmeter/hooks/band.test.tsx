@@ -204,7 +204,7 @@ test('a Gemini job shows from its live file, starts at the weekly use and adds w
   let arquivo: string | undefined
   let vivo: any = null
   let mtime = 0
-  mock.clock(on)
+  const relogio = mock.clock(on)
   on('turn.complete', (_$: any, e: any) => ({ text: 'ok', usage: e.usage }))
   on('session.measure', (_$: any, e: any) => ({ changed: e.changed }))
   on('ui.render', ($$: any, e: any) => { const { Box } = $$.ui.resolve(e); return <Box key="engine" /> })
@@ -221,8 +221,9 @@ test('a Gemini job shows from its live file, starts at the weekly use and adds w
   on('process.run', async () => ({ value: { exitCode: 0, stdout: `{"command":{"data":{"groups":[{"name":"Gemini Models","buckets":[{"window":"weekly","remaining_fraction":${resta}}]}]}}}`, stderr: '' } }) as any)
   on('tool.call', async (_: any, e: any) => {
     if (e.tool === 'mcp__gemini__gemini_start') {
-      mtime = Date.now() + 500
-      vivo = { id: 'g1', provedor: 'Gemini', modelo: 'gemini-4-hydrogen-xhigh', esforco: 'xhigh', estado: 'rodando', inicio: Date.now(), passos: 3, tokens: 1000, acao: 'rodando npm test' }
+      const agora = relogio.now()
+      mtime = agora + 500
+      vivo = { id: 'g1', provedor: 'Gemini', modelo: 'gemini-4-hydrogen-xhigh', esforco: 'xhigh', estado: 'rodando', inicio: agora, passos: 3, tokens: 1000, acao: 'rodando npm test' }
     }
     return { result: 'ok', text: 'ok' } as any
   })
@@ -245,7 +246,7 @@ test('a Gemini job shows from its live file, starts at the weekly use and adds w
   // o job termina: o semanal foi a 30%
   resta = 0.7
   mtime += 1000
-  vivo = { ...vivo, estado: 'concluido', acao: 'concluído', tokens: 9000, fim: Date.now() }
+  vivo = { ...vivo, estado: 'concluido', acao: 'concluído', tokens: 9000, fim: relogio.now() }
   await $.tool.call({ tool: 'mcp__gemini__gemini_result', id: 'g1' } as any)
   await new Promise(r => setTimeout(r, 50))
   v = await barra()
@@ -640,4 +641,244 @@ test('a long turn of many calls sizes the tube by the measured context, not by t
   expect(cheio).toBeGreaterThan(comprimento * 0.15)
   expect(cheio).toBeLessThan(comprimento * 0.2)
   await ui.unmount()
+})
+
+// ---- regressões da lógica de dados (reload, cotas, ferramentas e ciclo de vida)
+const dado = async (dados: Record<string, any>, key: string) => dados[key]
+const semanaAgente = ($: any, percentUsed: number) => $.session.measure({
+  context: { tokens: 1000, window: 200000, percent: 1 },
+  rateLimits: [{ kind: 'seven_day', percentUsed }], changed: [],
+})
+const respostaAgente = ($: any, agentId: string, turnId = 'sub') => $.turn.complete({
+  turnId, agentId, reason: 'answer', answer: 'ok', durationMs: 10, isAborted: false,
+  usage: { model: 'claude-haiku-5-5', input_tokens: 1000, output_tokens: 1000, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 },
+})
+function baseDados(on: any, omitir: string[] = []) {
+  const dados: Record<string, any> = {}
+  on('state.set', { plugin: 'funmeter' }, async (_$: any, e: any, next: any) => {
+    const r = await next(e)
+    if ((r?.value ?? r)?.isSet) dados[e.key] = e.value
+    return r
+  })
+  if (!omitir.includes('session.measure')) on('session.measure', (_$: any, e: any) => ({ changed: e.changed }))
+  if (!omitir.includes('turn.complete')) on('turn.complete', (_$: any, e: any) => ({ text: e.answer, usage: e.usage }))
+  if (!omitir.includes('agent.spawn')) on('agent.spawn', () => ({ model: 'claude-haiku-5-5', agentId: 'a1' }))
+  if (!omitir.includes('tool.call')) on('tool.call', () => ({ result: 'ok', text: 'ok' }))
+  if (!omitir.includes('env.get')) on('env.get', () => ({ value: 'C:/Users/teste' }))
+  if (!omitir.includes('fs.list')) on('fs.list', () => ({ value: [] }))
+  if (!omitir.includes('fs.read')) on('fs.read', () => ({ value: undefined }))
+  if (!omitir.includes('fs.write')) on('fs.write', () => ({ value: undefined }))
+  if (!omitir.includes('process.run')) on('process.run', () => ({ value: { exitCode: 0, stdout: '{}', stderr: '' } }))
+  if (!omitir.includes('ui.panes')) on('ui.panes', () => ({ value: [] }))
+  return dados
+}
+
+test('the first weekly rise is attributed and a weekly reset clears an active agent bar', async ($, on) => {
+  const dados = baseDados(on)
+  mock.clock(on, { now: 1000 })
+  await semanaAgente($, 27) // conta já existe antes de qualquer barra
+  expect((await dado(dados, 'contas')).Claude.semanal).toBe(0.27)
+  await $.agent.spawn({ prompt: 'revise', description: 'review' } as any)
+  // Nenhuma segunda medição de 27% depois do spawn é necessária.
+  await semanaAgente($, 30)
+  let barra = (await dado(dados, 'barras'))[0]
+  expect(barra.base).toBe(0.27)
+  expect(Math.abs(barra.gasto - 0.03)).toBeLessThan(1e-9)
+  await semanaAgente($, 2)
+  barra = (await dado(dados, 'barras'))[0]
+  expect(barra.estado).toBe('rodando')
+  expect(barra.base).toBe(0.02)
+  expect(barra.gasto).toBe(0)
+  await semanaAgente($, 3)
+  expect(Math.abs((await dado(dados, 'barras'))[0].gasto - 0.01)).toBeLessThan(1e-9)
+})
+
+test('a resumed subagent reopens its closed completed bar without changing its tokens or tasks', async ($, on) => {
+  const dados = baseDados(on)
+  const relogio = mock.clock(on, { now: 1000 })
+  on('ui.render', ($$: any, e: any) => { const { Box } = $$.ui.resolve(e); return <Box key="engine" /> })
+  await $.agent.spawn({ prompt: 'revise', description: 'review' } as any)
+  await $.tool.call({ tool: 'TaskCreate', subject: 'read', agentId: 'a1' } as any)
+  await respostaAgente($, 'a1')
+  const antes = (await dado(dados, 'barras'))[0]
+  expect(antes.fim).toBe(1000)
+  const ui = await $.ui.mount({ plugin: 'funmeter', surface: 'desktop', component: 'AbovePrompt', props: PROPS })
+  await ui.press({ key: 'fechar-a1' })
+  await ui.unmount()
+  expect((await dado(dados, 'barras'))[0].fechada).toBe(true)
+  await relogio.advance(2000)
+  await $.agent.spawn({ prompt: 'continue', description: 'resume', resume: { agentId: 'a1' } } as any)
+  const lista = await dado(dados, 'barras')
+  expect(lista).toHaveLength(1)
+  expect(lista[0].estado).toBe('rodando')
+  expect(lista[0].fim).toBeUndefined()
+  expect(lista[0].fechada).toBe(false)
+  expect(lista[0].tokens).toBe(antes.tokens)
+  expect(lista[0].tarefas).toEqual(antes.tarefas)
+})
+
+test('teammates and agent types without known task tools keep their original prompt', async ($, on) => {
+  const dados = baseDados(on, ['agent.spawn'])
+  mock.clock(on)
+  const prompts: string[] = []
+  on('agent.spawn', { subagentType: 'Explore' }, (_$: any, e: any) => {
+    prompts.push(e.prompt)
+    return { model: 'claude-haiku-5-5', agentId: 'explore' } as any
+  })
+  on('agent.spawn', { isTeammate: true }, (_$: any, e: any) => {
+    prompts.push(e.prompt)
+    return { model: 'claude-haiku-5-5', agentId: 'mate' } as any
+  })
+  await $.agent.spawn({ prompt: 'look', subagentType: 'Explore' } as any)
+  await $.agent.spawn({ prompt: 'team', subagentType: 'general-purpose', isTeammate: true } as any)
+  expect(prompts).toEqual(['look', 'team'])
+})
+
+test('a teammates next tool call reopens its bar after an idle completed turn', async ($, on) => {
+  const dados = baseDados(on)
+  mock.clock(on)
+  await $.agent.spawn({ prompt: 'team', isTeammate: true } as any)
+  await respostaAgente($, 'a1')
+  await $.tool.call({ tool: 'Read', file_path: 'README.md', agentId: 'a1' } as any)
+  expect((await dado(dados, 'barras'))[0].estado).toBe('rodando')
+  expect((await dado(dados, 'barras'))[0].fim).toBeUndefined()
+})
+
+test('denied and errored Gemini jobs leave no waiting entry or quota measurement', async ($, on) => {
+  const dados = baseDados(on, ['process.run', 'fs.list', 'tool.call'])
+  mock.clock(on)
+  let mediu = 0
+  let listou = 0
+  on('process.run', () => { mediu++; return { value: { exitCode: 0, stdout: '{}', stderr: '' } } as any })
+  on('fs.list', () => { listou++; return { value: [] } as any })
+  on('tool.call', { tool: 'mcp__gemini__gemini_start' }, () => ({ deny: 'no' }))
+  on('tool.call', { tool: 'mcp__gemini__gemini_run' }, () => ({ isError: true, result: undefined, text: 'failed' }))
+  await $.tool.call({ tool: 'mcp__gemini__gemini_start', task: 'no' } as any)
+  await $.tool.call({ tool: 'mcp__gemini__gemini_run', task: 'failed' } as any)
+  expect((await dado(dados, 'esperando')) ?? []).toEqual([])
+  expect(mediu).toBe(0)
+  expect(listou).toBe(0)
+})
+
+test('Bash and PowerShell commands merely containing gemini agy or codex do not measure quotas', async ($, on) => {
+  const dados = baseDados(on, ['process.run'])
+  mock.clock(on)
+  let mediu = 0
+  on('process.run', () => { mediu++; return { value: { exitCode: 0, stdout: '{}', stderr: '' } } as any })
+  for (const tool of ['Bash', 'PowerShell']) {
+    for (const command of ['rg "gemini usage" .', 'echo agy --help', 'git log --grep="codex bug"']) {
+      await $.tool.call({ tool, command } as any)
+    }
+  }
+  expect(mediu).toBe(0)
+  expect((await dado(dados, 'esperando')) ?? []).toEqual([])
+})
+
+test('a failed TaskCreate is not counted in the agent bar', async ($, on) => {
+  const dados = baseDados(on, ['tool.call'])
+  mock.clock(on)
+  on('tool.call', { tool: 'TaskCreate' }, () => ({ deny: 'no tasks' }))
+  await $.agent.spawn({ prompt: 'revise' } as any)
+  await $.tool.call({ tool: 'TaskCreate', subject: 'read', agentId: 'a1' } as any)
+  expect((await dado(dados, 'barras'))[0].tarefas).toBeUndefined()
+})
+
+test('waiting entries expire even when listing the live directory throws', async ($, on) => {
+  const dados = baseDados(on, ['fs.list'])
+  const relogio = mock.clock(on, { now: 1000 })
+  on('fs.list', () => { throw new Error('ENOENT') })
+  on('session.start', async () => ({ cwd: 'C:/x' }) as any)
+  on('ui.status', () => ({ value: undefined }) as any)
+  await $.session.start({ cwd: 'C:/x', source: 'startup' } as any)
+  await $.tool.call({ tool: 'mcp__gemini__gemini_start', task: 'go' } as any)
+  await new Promise(r => setTimeout(r, 30))
+  expect(await dado(dados, 'esperando')).toHaveLength(1)
+  await relogio.advance(122000)
+  expect(await dado(dados, 'esperando')).toEqual([])
+})
+
+test('aborted error and empty turns do not count as replies and the newest celebration lasts four seconds', async ($, on) => {
+  const dados = baseDados(on)
+  const relogio = mock.clock(on, { now: 1000 })
+  mock.store(on)
+  on('session.id', () => ({ value: 'replies' }) as any)
+  const fim = (turnId: string, reason: string, answer: string) => $.turn.complete({ turnId, reason, answer, durationMs: 10, isAborted: reason === 'aborted' } as any)
+  await fim('answer1', 'answer', 'ok')
+  await relogio.advance(2000)
+  await fim('answer2', 'answer', 'ok again')
+  await relogio.advance(2000) // o timer da primeira resposta já teria apagado a segunda
+  expect(await dado(dados, 'feliz')).toBe(true)
+  expect(await dado(dados, 'mensagens')).toBe(2)
+  expect(await dado(dados, 'ultimaResposta')).toBe(3000)
+  await fim('aborted', 'aborted', 'partial')
+  await fim('error', 'error', '')
+  await fim('empty', 'answer', '')
+  expect(await dado(dados, 'mensagens')).toBe(2)
+  expect(await dado(dados, 'ultimaResposta')).toBe(3000)
+  await relogio.advance(2000)
+  expect(await dado(dados, 'feliz')).toBe(false)
+})
+
+test('clear resets agent bars waiting entries weekly accounts and main-loop tokens', async ($, on) => {
+  const dados = baseDados(on)
+  mock.clock(on)
+  mock.store(on)
+  on('session.id', () => ({ value: 'clear' }) as any)
+  on('session.end', (_$: any, e: any) => ({ sessionId: e.sessionId }))
+  await semanaAgente($, 27)
+  await $.agent.spawn({ prompt: 'revise' } as any)
+  await $.tool.call({ tool: 'mcp__gemini__gemini_start', task: 'go' } as any)
+  await estado($, { turnos: 1 })
+  expect((await dado(dados, 'tokensPrincipal')) > 0).toBe(true)
+  await $.session.end({ reason: 'clear', sessionId: 'clear' } as any)
+  expect(await dado(dados, 'barras')).toEqual([])
+  expect(await dado(dados, 'esperando')).toEqual([])
+  expect(await dado(dados, 'contas')).toEqual({})
+  expect(await dado(dados, 'tokensPrincipal')).toBe(0)
+})
+
+test('a big Codex rollout uses the tail parser and a newer rollout without limits falls back to it', async ($, on) => {
+  const dados = baseDados(on, ['fs.list', 'fs.read', 'process.run'])
+  const agora = new Date(2026, 10, 13, 12).getTime()
+  const relogio = mock.clock(on, { now: agora })
+  const caudas: string[] = []
+  on('session.start', async () => ({ cwd: 'C:/x' }) as any)
+  on('ui.status', () => ({ value: undefined }) as any)
+  let leuGrande = 0
+  let temMaisNovo = true
+  const limite = (p: number) => JSON.stringify({ payload: { rate_limits: { secondary: { used_percent: p, window_minutes: 10080, resets_at: Math.floor(agora / 1000) + 30 } } } })
+  const grande = 'x'.repeat(5 * 1024 * 1024) + '\n' + limite(42) + '\n' + JSON.stringify({ rate_limits: { primary: null } }) + '\n{"rate_limits":'
+  on('fs.list', (_$: any, e: any) => ({ value: String(e.path).replaceAll('\\', '/').endsWith('/2026/11/13') ? [
+    ...(temMaisNovo ? [{ name: 'new.jsonl', kind: 'file', size: 2, mtimeMs: agora + 1, isLink: false }] : []),
+    { name: 'big.jsonl', kind: 'file', size: grande.length, mtimeMs: agora, isLink: false },
+  ] : [] }) as any)
+  on('fs.stat', (_$: any, e: any) => ({ value: { kind: 'file', size: String(e.path).endsWith('big.jsonl') ? grande.length : 2, mtimeMs: agora, isLink: false } }) as any)
+  on('fs.read', (_$: any, e: any) => {
+    if (String(e.path).endsWith('big.jsonl')) { leuGrande++; throw new Error('over 4 MiB') }
+    return { value: String(e.path).endsWith('new.jsonl') ? '{}' : undefined } as any
+  })
+  on('process.run', (_$: any, e: any) => {
+    if (e.argv[0] === 'node') {
+      caudas.push(e.argv[e.argv.length - 1])
+      expect(e.argv[1]).toBe('-e')
+      expect(e.argv[2]).toContain('262144')
+      return { value: { exitCode: 0, stdout: grande.slice(-256 * 1024), stderr: '' } } as any
+    }
+    return { value: { exitCode: 0, stdout: '{}', stderr: '' } } as any
+  })
+  on('command.register', () => ({ value: undefined }) as any)
+  await $.session.start({ cwd: 'C:/x', source: 'startup' } as any)
+  await $.tool.call({ tool: 'Bash', command: 'codex exec "review"' })
+  await new Promise(r => setTimeout(r, 30))
+  expect(leuGrande).toBe(0)
+  expect(caudas).toHaveLength(1)
+  expect(caudas[0]).toContain('big.jsonl')
+  expect(await dado(dados, 'cotasCodex')).toEqual([{ nome: 'Codex', janela: 'wk', usado: 0.42 }])
+  // Relê a cauda em cache: nem o rollout novo vazio nem o grande voltam ao processo.
+  temMaisNovo = false
+  await $.tool.call({ tool: 'Bash', command: 'codex exec "again"' })
+  await new Promise(r => setTimeout(r, 30))
+  expect(caudas).toHaveLength(1)
+  await relogio.advance(30000)
+  expect(await dado(dados, 'cotasCodex')).toEqual([{ nome: 'Codex', janela: 'wk', usado: 0 }])
 })

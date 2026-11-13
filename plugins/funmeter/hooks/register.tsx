@@ -29,6 +29,10 @@ const paradoFechado = atom({ plugin: 'funmeter', key: 'paradoFechado' } as const
 const barras = atom({ plugin: 'funmeter', key: 'barras' } as const, [])
 const contas = atom({ plugin: 'funmeter', key: 'contas' } as const, {})
 const esperando = atom({ plugin: 'funmeter', key: 'esperando' } as const, [])
+// Sobrevivem ao reload; null permite recuperar o total principal já guardado em contas na versão anterior.
+const tokensPrincipal = atom({ plugin: 'funmeter', key: 'tokensPrincipal' } as const, null)
+const semanalCodexVivo = atom({ plugin: 'funmeter', key: 'semanalCodexVivo' } as const, null)
+const cotasCodexEm = atom({ plugin: 'funmeter', key: 'cotasCodexEm' } as const, 0)
 
 const LARANJA = '#D77757'
 const CLARO = '#EE9C78'
@@ -476,6 +480,7 @@ function desenharMascote(modo: Modo): string {
 // A pasta do usuário vem de $.env: o módulo não tem Node, então process.env não existe aqui.
 let CASA = ''
 async function acharCasa($: EngineInterface) {
+  if (CASA) return
   const pasta = (await $.env.get('USERPROFILE')) ?? (await $.env.get('HOME')) ?? ''
   CASA = pasta.split(String.fromCharCode(92)).join('/')
 }
@@ -1233,6 +1238,7 @@ type RegGemini = { modelo: string; ok: boolean; input: number; output: number; r
 let logsLidos = new Map<string, { mtimeMs: number; reg: RegGemini }>()
 
 async function usoGemini($: EngineInterface): Promise<Record<string, UsoGemini>> {
+  await acharCasa($)
   const saida: Record<string, UsoGemini> = {}
   let lista: { name: string; kind: string; mtimeMs: number }[] = []
   try {
@@ -1310,7 +1316,16 @@ function lerCotas(saida: string): Cota[] {
 
 // As sessões abertas dividem uma leitura só, guardada em COTAS_ARQ. O agy roda sem o atualizador:
 // a cada 15 min ele abria uma janela de terminal visível (agy --bg-updater). Só 'true' desliga; '1' não.
-async function atualizarCotas($: EngineInterface, forcar = false) {
+let cotasEmCurso: Promise<void> | null = null
+function atualizarCotas($: EngineInterface, forcar = false): Promise<void> {
+  if (cotasEmCurso) return cotasEmCurso
+  cotasEmCurso = lerCotasAtuais($, forcar).finally(() => { cotasEmCurso = null })
+  return cotasEmCurso
+}
+
+async function lerCotasAtuais($: EngineInterface, forcar: boolean) {
+  await acharCasa($)
+  const agora = await $.clock.now()
   let salvo: { em: number; lista: Cota[] } | null = null
   try {
     salvo = JSON.parse(String(await $.fs.read(cotasArq())))
@@ -1321,26 +1336,41 @@ async function atualizarCotas($: EngineInterface, forcar = false) {
     const lista = salvo.lista
     await update($, cotas, () => lista)
   }
-  if (!forcar && salvo && Date.now() - salvo.em < COTA_CADA_MS) return
+  if (!forcar && salvo && agora - salvo.em < COTA_CADA_MS) {
+    await contarSemanal($)
+    return
+  }
   try {
     // Reserva a vez antes de rodar, para as outras sessões não lerem junto.
-    await $.fs.write(cotasArq(), JSON.stringify({ em: Date.now(), lista: salvo?.lista ?? [] }))
+    await $.fs.write(cotasArq(), JSON.stringify({ em: await $.clock.now(), lista: salvo?.lista ?? [] }))
     const r = await $.process.run([agy(), '-p', '/usage', '--output-format', 'json'], { timeoutMs: 30000, env: { AGY_CLI_DISABLE_AUTO_UPDATE: 'true' } })
     if (r.exitCode === 0) {
       const lista = lerCotas(r.stdout)
-      await $.fs.write(cotasArq(), JSON.stringify({ em: Date.now(), lista }))
+      await $.fs.write(cotasArq(), JSON.stringify({ em: await $.clock.now(), lista }))
       await update($, cotas, () => lista)
     }
   } catch {
     // sem agy ou sem rede: fica a última leitura
   }
+  await contarSemanal($)
 }
 
 // O Codex grava o limite do plano ChatGPT em cada sessão (~/.codex/sessions/AAAA/MM/DD/*.jsonl).
 // Lê a sessão mais recente, sem gastar nada; só relê quando o arquivo muda.
 const sessoesCodex = () => `${CASA}/.codex/sessions`
 const dois = (n: number) => String(n).padStart(2, '0')
-let codexLido: { arq: string; mtimeMs: number } | null = null
+const CAUDA_CODEX = 256 * 1024
+const codexLidos = new Map<string, { mtimeMs: number; texto: string }>()
+// Só a cauda cruza o limite do ambiente do plugin. O caminho vai em argv, nunca interpolado no script.
+const LER_CAUDA = "const fs=require('fs');const f=fs.openSync(process.argv[1],'r');try{const size=fs.fstatSync(f).size;const n=Math.min(size,262144);const b=Buffer.alloc(n);const l=fs.readSync(f,b,0,n,size-n);process.stdout.write(b.subarray(0,l));}finally{fs.closeSync(f)}"
+
+async function caudaCodex($: EngineInterface, arq: string): Promise<string> {
+  const stat = await $.fs.stat(arq)
+  if (stat.size <= CAUDA_CODEX) return String(await $.fs.read(arq))
+  const r = await $.process.run(['node', '-e', LER_CAUDA, arq], { timeoutMs: 10000 })
+  if (r.exitCode !== 0 || r.isStdoutTruncated) throw new Error('Codex tail unavailable')
+  return r.stdout
+}
 
 function acharLimites(o: unknown): Record<string, unknown> | null {
   if (!o || typeof o !== 'object') return null
@@ -1379,41 +1409,55 @@ function lerCodex(texto: string, agora: number): Cota[] | null {
   return null
 }
 
-async function atualizarCodex($: EngineInterface) {
-  let achado: { arq: string; mtimeMs: number } | null = null
-  for (let d = 0; d < 7 && !achado; d++) {
-    const dia = new Date(Date.now() - d * 86400000)
+function atualizarCodex($: EngineInterface): Promise<void> {
+  return umPorVez('atualizarCodex', () => atualizarCodexJa($))
+}
+async function atualizarCodexJa($: EngineInterface) {
+  await acharCasa($)
+  const agora = await $.clock.now()
+  for (let d = 0; d < 7; d++) {
+    const dia = new Date(agora - d * 86400000)
     const pasta = `${sessoesCodex()}/${dia.getFullYear()}/${dois(dia.getMonth() + 1)}/${dois(dia.getDate())}`
+    let arquivos
     try {
-      const lista = (await $.fs.list(pasta)) as { name: string; kind: string; mtimeMs: number }[]
-      const ult = lista.filter(a => a.kind === 'file' && a.name.endsWith('.jsonl')).sort((a, b) => b.mtimeMs - a.mtimeMs)[0]
-      if (ult) achado = { arq: `${pasta}/${ult.name}`, mtimeMs: ult.mtimeMs }
+      arquivos = (await $.fs.list(pasta)).filter(a => a.kind === 'file' && a.name.endsWith('.jsonl')).sort((a, b) => b.mtimeMs - a.mtimeMs)
     } catch {
-      // dia sem sessão do Codex
+      continue // dia sem sessão do Codex
     }
-  }
-  if (!achado || (codexLido?.arq === achado.arq && codexLido.mtimeMs === achado.mtimeMs)) return
-  try {
-    const lista = lerCodex(String(await $.fs.read(achado.arq)), Date.now())
-    codexLido = achado
-    if (lista) await update($, cotasCodex, () => lista)
-  } catch {
-    // arquivo sendo gravado: tenta na próxima volta
+    for (const a of arquivos) {
+      const arq = `${pasta}/${a.name}`
+      try {
+        let salvo = codexLidos.get(arq)
+        if (!salvo || salvo.mtimeMs !== a.mtimeMs) {
+          salvo = { mtimeMs: a.mtimeMs, texto: await caudaCodex($, arq) }
+          codexLidos.set(arq, salvo)
+          if (codexLidos.size > 12) codexLidos.delete(codexLidos.keys().next().value!)
+        }
+        const lista = lerCodex(salvo.texto, agora)
+        if (!lista) continue // rollout novo ainda sem rate_limits: tenta o anterior
+        if (JSON.stringify(lista) !== JSON.stringify(await read($, cotasCodex))) await update($, cotasCodex, () => lista)
+        if (a.mtimeMs !== await read($, cotasCodexEm)) await update($, cotasCodexEm, () => a.mtimeMs)
+        await contarSemanal($)
+        return
+      } catch {
+        // arquivo sendo gravado ou removido: tenta o anterior
+      }
+    }
   }
 }
 
-// Agentes de fora (Gemini, Codex): a cota é medida antes e depois de cada chamada, para os números das barras ficarem frescos.
+// Mede só inícios de jobs e comandos cujo executável é a CLI, depois de a chamada ter sucesso.
 type Agente = 'Gemini' | 'Codex'
 
 function agenteDe(e: Record<string, unknown>): Agente | null {
   const ferramenta = String(e.tool ?? '')
-  if (/^mcp__codex__/i.test(ferramenta)) return 'Codex'
-  if (/^mcp__gemini__/i.test(ferramenta)) return 'Gemini'
-  if (ferramenta === 'Agent' && /antigravity|gemini/i.test(String(e.subagent_type ?? ''))) return 'Gemini'
+  if (FERRAMENTA_JOB.test(ferramenta)) return /gemini/i.test(ferramenta) ? 'Gemini' : 'Codex'
   if (ferramenta === 'Bash' || ferramenta === 'PowerShell') {
-    const cmd = String(e.command ?? '')
-    if (/\bcodex(\.exe)?\s/i.test(cmd)) return 'Codex'
-    if (/\bagy(\.exe)?\s|\bgemini(\.exe)?\s/i.test(cmd)) return 'Gemini'
+    const cmd = String(e.command ?? '').trimStart().replace(/^&\s*/, '')
+    const exe = cmd.match(/^(?:"([^"\r\n]+)"|'([^'\r\n]+)'|([^\s;&|]+))(?=\s|$)/)
+    const nome = (exe?.[1] ?? exe?.[2] ?? exe?.[3] ?? '').split(/[\\/]/).pop()
+    if (/^codex(?:\.exe|\.cmd)?$/i.test(nome ?? '')) return 'Codex'
+    if (/^(agy|gemini)(?:\.exe|\.cmd)?$/i.test(nome ?? '')) return 'Gemini'
   }
   return null
 }
@@ -1506,8 +1550,29 @@ const PEDIDO_TAREFAS =
 const grupoDe = (b: Pick<BarraAgente, 'provedor' | 'modelo'>) =>
   b.provedor === 'Gemini' ? (/argon/i.test(b.modelo) ? 'Gemini:Argon' : 'Gemini:Gemini') : b.provedor
 
-let semanalCodexVivo: { semanal: number; em: number } | null = null
-let tokensPrincipal = 0 // tokens do loop principal: entram na divisão do semanal do Claude, e a parte deles fica de fora
+// Uma chamada durante a leitura pede mais uma passada, sem leitores concorrentes nem filas ilimitadas.
+// O motor só segue $ até funções declaradas no topo, então a fila é por nome e cada leitor é uma função declarada.
+const filas = new Map<string, { emCurso: Promise<void> | null; deNovo: boolean }>()
+function umPorVez(nome: string, f: () => Promise<void>): Promise<void> {
+  let fila = filas.get(nome)
+  if (!fila) filas.set(nome, (fila = { emCurso: null, deNovo: false }))
+  const q = fila
+  if (q.emCurso) {
+    q.deNovo = true
+    return q.emCurso
+  }
+  q.emCurso = (async () => {
+    try {
+      do {
+        q.deNovo = false
+        await f()
+      } while (q.deNovo)
+    } finally {
+      q.emCurso = null
+    }
+  })()
+  return q.emCurso
+}
 
 async function semanalDe($: EngineInterface, grupo: string): Promise<number | null> {
   if (grupo === 'Claude') {
@@ -1515,8 +1580,9 @@ async function semanalDe($: EngineInterface, grupo: string): Promise<number | nu
     return s ? s.percentUsed / 100 : null
   }
   if (grupo === 'Codex') {
-    if (semanalCodexVivo) return semanalCodexVivo.semanal
-    return (await read($, cotasCodex)).find(c => c.janela === 'wk')?.usado ?? null
+    const [vivo, lista, em] = await Promise.all([read($, semanalCodexVivo), read($, cotasCodex), read($, cotasCodexEm)])
+    const arquivo = lista.find(c => c.janela === 'wk')?.usado
+    return vivo && (arquivo === undefined || vivo.em > em) ? vivo.semanal : arquivo ?? null
   }
   const balde = grupo.split(':')[1]
   return (await read($, cotas)).find(c => c.nome === balde && c.janela === 'wk')?.usado ?? null
@@ -1524,12 +1590,16 @@ async function semanalDe($: EngineInterface, grupo: string): Promise<number | nu
 
 // A subida do semanal desde a última leitura é repartida pelos tokens que cada agente do grupo gastou nesse intervalo.
 // Sem tokens novos (a cota subiu depois do fim), vai para os que terminaram há pouco, pelo total de cada um.
-async function contarSemanal($: EngineInterface) {
+function contarSemanal($: EngineInterface): Promise<void> {
+  return umPorVez('contarSemanal', () => contarSemanalJa($))
+}
+async function contarSemanalJa($: EngineInterface) {
   const lista = await read($, barras)
-  const grupos = new Set(lista.map(grupoDe))
-  if (!grupos.size) return
+  // Guarda a base mesmo antes da primeira barra de cada família.
+  const grupos = new Set(['Claude', 'Codex', 'Gemini:Gemini', 'Gemini:Argon', ...lista.map(grupoDe)])
   const contasAgora = { ...(await read($, contas)) }
-  const agora = Date.now()
+  const agora = await $.clock.now()
+  const principal = (await read($, tokensPrincipal)) ?? contasAgora.Claude?.tokens.__principal ?? 0
   let novas = lista
   for (const g of grupos) {
     const S = await semanalDe($, g)
@@ -1537,7 +1607,7 @@ async function contarSemanal($: EngineInterface) {
     const doGrupo = novas.filter(b => grupoDe(b) === g)
     const tokens: Record<string, number> = {}
     for (const b of doGrupo) tokens[b.id] = b.tokens
-    if (g === 'Claude') tokens['__principal'] = tokensPrincipal
+    if (g === 'Claude') tokens['__principal'] = principal
     const antes = contasAgora[g]
     const parte: Record<string, number> = {}
     if (antes && S > antes.semanal + 1e-9) {
@@ -1546,13 +1616,14 @@ async function contarSemanal($: EngineInterface) {
       for (const [id, t] of Object.entries(tokens)) pesos[id] = Math.max(0, t - (antes.tokens[id] ?? 0))
       let total = Object.values(pesos).reduce((a, x) => a + x, 0)
       if (total === 0) {
-        for (const b of doGrupo) if (b.estado === 'rodando' || (b.fim && agora - b.fim < RECENTE_MS)) pesos[b.id] = Math.max(1, b.tokens)
+        for (const b of doGrupo) if (b.estado === 'rodando' || (b.fim !== undefined && agora - b.fim < RECENTE_MS)) pesos[b.id] = Math.max(1, b.tokens)
         total = Object.values(pesos).reduce((a, x) => a + x, 0)
       }
       if (total > 0) for (const [id, p] of Object.entries(pesos)) parte[id] = (d * p) / total
     }
     novas = novas.map(b => {
       if (grupoDe(b) !== g) return b
+      if (antes && S < antes.semanal - 1e-9 && b.estado === 'rodando') return { ...b, base: S, gasto: 0 }
       const base = b.base ?? S
       return parte[b.id] ? { ...b, base, gasto: b.gasto + parte[b.id]! } : b.base === null ? { ...b, base } : b
     })
@@ -1565,9 +1636,12 @@ async function contarSemanal($: EngineInterface) {
 }
 
 async function novaBarra($: EngineInterface, b: Omit<BarraAgente, 'nome' | 'base' | 'gasto' | 'tokens'> & { tokens?: number }) {
+  const agora = await $.clock.now()
   await update($, barras, lista => {
-    if (lista.some(x => x.id === b.id)) return lista
-    const nova: BarraAgente = { tokens: 0, ...b, nome: nomeLivre(nomeDoModelo(b.modelo), lista), base: null, gasto: 0 }
+    if (lista.some(x => x.id === b.id)) return lista.map(x => x.id === b.id
+      ? { ...x, modelo: b.modelo, estado: 'rodando', acao: b.acao, fim: undefined, fechada: false }
+      : x)
+    const nova: BarraAgente = { tokens: 0, ...b, fim: b.estado === 'rodando' ? undefined : b.fim ?? agora, nome: nomeLivre(nomeDoModelo(b.modelo), lista), base: null, gasto: 0 }
     const ficam = [...lista, nova]
     // as mais velhas já fechadas ou terminadas saem primeiro
     while (ficam.length > BARRAS_MAX) {
@@ -1581,6 +1655,12 @@ async function novaBarra($: EngineInterface, b: Omit<BarraAgente, 'nome' | 'base
 const mudarBarra = ($: EngineInterface, id: string, f: (b: BarraAgente) => BarraAgente) =>
   update($, barras, lista => (lista.some(b => b.id === id) ? lista.map(b => (b.id === id ? f(b) : b)) : lista))
 
+async function reabrirBarra($: EngineInterface, id: string) {
+  if ((await read($, barras)).some(b => b.id === id && (b.estado !== 'rodando' || b.fechada || b.fim !== undefined))) {
+    await mudarBarra($, id, b => ({ ...b, estado: 'rodando', fim: undefined, fechada: false, acao: 'começando' }))
+  }
+}
+
 async function fecharBarra($: EngineInterface, id: string) {
   await update($, barras, lista => lista.map(b => (b.id === id ? { ...b, fechada: true } : b)))
 }
@@ -1591,12 +1671,12 @@ type Vivo = {
   limites?: { semanal?: number }; tentaDeNovo?: string; em?: number
 }
 
-const deVivo = (b: BarraAgente, v: Vivo, mtime: number): BarraAgente => ({
+const deVivo = (b: BarraAgente, v: Vivo, mtime: number, agora: number): BarraAgente => ({
   ...b,
   modelo: v.modelo ?? b.modelo,
   esforco: v.esforco ?? b.esforco,
   estado: v.estado ?? b.estado,
-  fim: v.fim ?? b.fim,
+  fim: (v.estado ?? b.estado) === 'rodando' ? undefined : v.fim ?? b.fim ?? agora,
   tokens: v.tokens ?? b.tokens,
   acao: v.acao ?? b.acao,
   imagens: v.imagens ?? b.imagens,
@@ -1605,9 +1685,22 @@ const deVivo = (b: BarraAgente, v: Vivo, mtime: number): BarraAgente => ({
 })
 
 // Lê os .live.json: acha os jobs que esta sessão acabou de pedir e atualiza os que estão rodando.
-async function lerVivos($: EngineInterface) {
+function lerVivos($: EngineInterface): Promise<void> {
+  return umPorVez('lerVivos', () => lerVivosJa($))
+}
+async function lerVivosJa($: EngineInterface) {
+  const agora = await $.clock.now()
   const lista = await read($, barras)
+  const pendentes = await read($, esperando)
+  if (pendentes.some(x => agora - x.desde >= 120000)) await update($, esperando, l => l.filter(x => agora - x.desde < 120000))
   const esperam = await read($, esperando)
+  const registrar = async (prov: Agente, v: Vivo, mtime: number) => {
+    if (prov === 'Codex' && typeof v.limites?.semanal === 'number') {
+      const leitura = { semanal: v.limites.semanal, em: v.em ?? mtime }
+      await update($, semanalCodexVivo, antes => !antes || leitura.em >= antes.em ? leitura : antes)
+    }
+    if (v.estado && v.estado !== 'rodando') void medirAgente($, prov).then(() => contarSemanal($)).catch(() => undefined)
+  }
   for (const prov of ['Gemini', 'Codex'] as const) {
     const pend = esperam.filter(x => x.provedor === prov)
     const rodando = lista.filter(b => b.provedor === prov && b.estado === 'rodando' && !b.fechada)
@@ -1638,35 +1731,36 @@ async function lerVivos($: EngineInterface) {
       let usados = 0
       for (const { a, v } of vivos.slice(0, pend.length)) {
         await novaBarra($, deVivo({
-          id: v!.id, provedor: prov, modelo: v!.modelo ?? prov, acao: 'começando', estado: 'rodando', inicio: v!.inicio ?? Date.now(),
-        } as BarraAgente, v!, a.mtimeMs))
+          id: v!.id, provedor: prov, modelo: v!.modelo ?? prov, acao: 'começando', estado: 'rodando', inicio: v!.inicio ?? agora,
+        } as BarraAgente, v!, a.mtimeMs, agora))
+        await registrar(prov, v!, a.mtimeMs)
         usados++
       }
       if (usados) {
-        let tirar = usados
-        await update($, esperando, l => l.filter(x => !(x.provedor === prov && tirar-- > 0)))
+        await update($, esperando, l => {
+          let tirar = usados // o updater pode repetir por ifVersion
+          return l.filter(x => !(x.provedor === prov && tirar-- > 0))
+        })
       }
-      // pedido sem arquivo depois de 2 min (servidor antigo, ou o job nem começou): desiste
-      await update($, esperando, l => l.filter(x => Date.now() - x.desde < 120000))
     }
     for (const b of rodando) {
       const a = arquivos.find(x => x.name === `${b.id}.live.json`)
       if (!a || a.mtimeMs === b.liveMtime) continue
       const v = await ler(a.name)
       if (!v) continue
-      if (prov === 'Codex' && typeof v.limites?.semanal === 'number' && (v.em ?? 0) >= (semanalCodexVivo?.em ?? 0)) {
-        semanalCodexVivo = { semanal: v.limites.semanal, em: v.em ?? Date.now() }
-      }
-      await mudarBarra($, b.id, x => deVivo(x, v, a.mtimeMs))
-      // terminou: lê a cota de novo para a subida chegar à barra
-      if (v.estado && v.estado !== 'rodando') void medirAgente($, prov).then(() => contarSemanal($))
+      await mudarBarra($, b.id, x => deVivo(x, v, a.mtimeMs, agora))
+      await registrar(prov, v, a.mtimeMs)
     }
   }
 }
 
 async function voltaDasBarras($: EngineInterface) {
   const [lista, esperam] = await Promise.all([read($, barras), read($, esperando)])
-  if (!lista.length && !esperam.length) return
+  const agora = await $.clock.now()
+  // Dados de versões anteriores também precisam de fim para deixar de aparecer.
+  const semFim = lista.some(b => b.estado !== 'rodando' && b.fim === undefined)
+  if (semFim) await update($, barras, l => l.map(b => b.estado !== 'rodando' && b.fim === undefined ? { ...b, fim: agora } : b))
+  if (!semFim && !esperam.length && !lista.some(b => b.estado === 'rodando' || (b.fim !== undefined && agora - b.fim < RECENTE_MS))) return
   await lerVivos($)
   await contarSemanal($)
 }
@@ -1675,7 +1769,8 @@ async function voltaDasBarras($: EngineInterface) {
 const pesoDe = (f: Fatias) => f.input + f.output + f.escrito
 async function contarTokens($: EngineInterface, agentId: string | undefined, f: Fatias, esforco?: string) {
   if (!agentId) {
-    tokensPrincipal += pesoDe(f)
+    const anterior = (await read($, contas)).Claude?.tokens.__principal ?? 0
+    await update($, tokensPrincipal, n => (n ?? anterior) + pesoDe(f))
     return
   }
   await mudarBarra($, agentId, b => ({ ...b, tokens: b.tokens + pesoDe(f), esforco: esforco ?? b.esforco }))
@@ -1706,20 +1801,30 @@ async function somar($: EngineInterface, f: Fatias, modelo: string) {
 }
 
 async function zerar($: EngineInterface) {
-  await update($, fatias, () => null)
-  await update($, medida, () => null)
-  await update($, skills, () => [])
-  await update($, totais, () => ZERO)
-  await update($, custo, () => null)
-  await update($, estimado, () => 0)
-  await update($, piso, () => null)
-  await update($, mensagens, () => 0)
-  await update($, fechado, () => null)
-  await update($, ultimaResposta, () => null)
-  await update($, parado, () => false)
-  await update($, paradoFechado, () => null)
-  await update($, velocidade, () => null)
-  await update($, porModelo, () => ({}))
+  felizTimer?.cancel()
+  felizTimer = undefined
+  await Promise.all([
+    update($, fatias, () => null),
+    update($, medida, () => null),
+    update($, skills, () => []),
+    update($, totais, () => ZERO),
+    update($, custo, () => null),
+    update($, estimado, () => 0),
+    update($, piso, () => null),
+    update($, mensagens, () => 0),
+    update($, fechado, () => null),
+    update($, ultimaResposta, () => null),
+    update($, parado, () => false),
+    update($, paradoFechado, () => null),
+    update($, velocidade, () => null),
+    update($, porModelo, () => ({})),
+    update($, barras, () => []),
+    update($, esperando, () => []),
+    update($, contas, () => ({})),
+    update($, tokensPrincipal, () => 0),
+    update($, semanalCodexVivo, () => null),
+    update($, feliz, () => false),
+  ])
 }
 
 async function limpar($: EngineInterface) {
@@ -1731,6 +1836,7 @@ async function limpar($: EngineInterface) {
 const pastaSessoes = () => `${CASA}/.claude/projects`
 
 async function arquivoDa($: EngineInterface, id: string): Promise<string> {
+  await acharCasa($)
   const slug = (await $.session.cwd()).replace(/[^A-Za-z0-9]/g, '-')
   return `${pastaSessoes()}/${slug}/${id}.jsonl`
 }
@@ -1754,6 +1860,7 @@ async function tituloDa($: EngineInterface, id: string): Promise<string | null> 
 }
 
 async function handoff($: EngineInterface) {
+  await acharCasa($)
   if (await read($, ocupado)) return
   await update($, ocupado, () => true)
   try {
@@ -1911,74 +2018,85 @@ async function conferirRelida($: EngineInterface) {
   await verParado($)
 }
 
+let relogiosIniciados = false
+let felizTimer: ReturnType<EngineInterface['clock']['after']> | undefined
+
+function iniciarRelogios($: EngineInterface) {
+  if (relogiosIniciados) return
+  relogiosIniciados = true
+  // um reload roda register e session.start de novo (skill plugin-authoring): é dali que os quatro relógios saem, uma vez por carga.
+  $.clock.every(COTA_OLHA_MS, () => {
+    void atualizarCotas($).catch(() => undefined)
+    void atualizarCodex($).catch(() => undefined)
+  })
+  $.clock.every(30000, () => { void verParado($).catch(() => undefined) })
+  $.clock.every(2000, () => { void voltaDasBarras($).catch(() => undefined) })
+  $.clock.every(4000, () => {
+    void $.ui.panes().then(l => {
+      if (l.some(p => p.id === PAINEL_STATS)) return update($, pulso, n => n + 1)
+    }).catch(() => undefined)
+  })
+}
+
 export const register: Register = on => {
   const turnosContados = new Set<string>()
 
   on('session.start', async ($, e, next) => {
+    iniciarRelogios($)
     $.ui.status(undefined)
     await acharCasa($)
-    void atualizarCotas($)
-    void atualizarCodex($)
-    $.clock.every(COTA_OLHA_MS, () => {
-      void atualizarCotas($)
-      void atualizarCodex($)
-    })
+    void atualizarCotas($).catch(() => undefined)
+    void atualizarCodex($).catch(() => undefined)
     await lerResposta($)
     await verParado($)
-    $.clock.every(30000, () => void verParado($))
-    $.clock.every(2000, () => void voltaDasBarras($))
     await $.command.register({ name: 'funstats', description: 'Show or hide the usage stats pane' })
-    // Mantém os números do Gemini frescos enquanto o painel está aberto.
-    $.clock.every(4000, () => {
-      void $.ui.panes().then(l => {
-        if (l.some(p => p.id === PAINEL_STATS)) void update($, pulso, n => n + 1)
-      })
-    })
     return next(e)
   })
 
-  // Subagente do Claude: a ferramenta vira a ação da barra, e TaskCreate/TaskUpdate/TodoWrite viram o "3/7".
-  // Job do Gemini ou do Codex: fica esperando o .live.json dele aparecer. Gemini ou Codex: mede a cota antes e depois.
+  // Ações e tarefas só contam depois do sucesso. A medição do job não atrasa a ferramenta.
   on('tool.call', async ($, e, next) => {
     const x = e as unknown as Record<string, any>
+    const job = FERRAMENTA_JOB.test(String(x.tool ?? ''))
+    const desde = job ? await $.clock.now() : 0
+    const provedor: Agente = /gemini/i.test(String(x.tool)) ? 'Gemini' : 'Codex'
+    // pendente antes de rodar: um gemini_run espera o job inteiro dentro do next, e a barra tem de aparecer enquanto ele roda
+    if (job) await update($, esperando, l => [...l, { provedor, desde }])
+    const r = await next(e)
+    if (r.deny !== undefined || r.isError) {
+      if (job) await update($, esperando, l => l.filter(p => !(p.provedor === provedor && p.desde === desde)))
+      return r
+    }
     if (x.agentId) {
+      await reabrirBarra($, String(x.agentId))
       const acao = acaoDaFerramenta(x)
       await mudarBarra($, String(x.agentId), b => {
         const c = contarTarefas(b, x)
         return acao ? { ...c, acao } : c
       })
     }
-    const job = FERRAMENTA_JOB.test(String(x.tool ?? ''))
-    if (job) {
-      const provedor: 'Gemini' | 'Codex' = /gemini/i.test(String(x.tool)) ? 'Gemini' : 'Codex'
-      await update($, esperando, l => [...l, { provedor, desde: Date.now() }])
-    }
     const agente = agenteDe(x)
-    if (!agente) return next(e)
-    if (job) {
-      try {
-        await medirAgente($, agente)
-      } catch {
-        // sem leitura agora: a base vem da próxima medição
-      }
-    }
-    const r = await next(e)
-    try {
-      await medirAgente($, agente)
-    } catch {
-      // sem leitura: fica a do relógio de 30s
-    }
-    void voltaDasBarras($)
+    if (agente) void medirAgente($, agente).then(() => voltaDasBarras($)).catch(() => undefined)
+    else void voltaDasBarras($).catch(() => undefined)
     return r
   })
 
-  // Subagente do Claude que começa: ganha uma barra, e o prompt pede a lista de tarefas que vira o "3/7".
+  // AgentSpawnInput não expõe ferramentas; só o tipo padrão é conhecido por aceitar TaskCreate.
   on('agent.spawn', async ($, e, next) => {
-    const pedir = !('resume' in e && e.resume) && !e.workflow && !e.fork ? { ...e, prompt: e.prompt + PEDIDO_TAREFAS } : e
+    await contarSemanal($)
+    const temTarefas = !e.subagentType || e.subagentType === 'general-purpose'
+    const pedir = !('resume' in e && e.resume) && !e.isTeammate && !e.workflow && !e.fork && temTarefas ? { ...e, prompt: e.prompt + PEDIDO_TAREFAS } : e
     const r = await next(pedir)
     if ('agentId' in r && r.agentId) {
-      await novaBarra($, { id: r.agentId, provedor: 'Claude', modelo: r.model, acao: 'começando', estado: 'rodando', inicio: Date.now() })
+      await novaBarra($, { id: r.agentId, provedor: 'Claude', modelo: r.model, acao: 'começando', estado: 'rodando', inicio: await $.clock.now() })
+      await contarSemanal($)
     }
+    return r
+  })
+
+  // Teammates podem acordar para outro turno sem passar por agent.spawn.
+  on('turn.start', async ($, e, next) => {
+    const r = await next(e)
+    if ('agentId' in e && typeof e.agentId === 'string') await reabrirBarra($, e.agentId)
     return r
   })
 
@@ -1998,6 +2116,7 @@ export const register: Register = on => {
   })
 
   on('turn.step', async function* ($, e, next) {
+    if (e.agentId) await reabrirBarra($, e.agentId)
     // Lê o fluxo à mão para cronometrar do primeiro pedaço ao último: tok/s sem a espera até o modelo começar a responder.
     const fluxo = next(e)
     let primeiro: number | null = null
@@ -2046,13 +2165,15 @@ export const register: Register = on => {
     turnosContados.delete(e.turnId)
     if (e.agentId) {
       const estado = e.reason === 'answer' ? 'concluido' : e.reason === 'aborted' ? 'parado' : 'erro'
-      await mudarBarra($, e.agentId, b => ({ ...b, estado, fim: Date.now(), acao: estado === 'concluido' ? 'concluído' : estado }))
+      const fim = await $.clock.now()
+      await mudarBarra($, e.agentId, b => ({ ...b, estado, fim, acao: estado === 'concluido' ? 'concluído' : estado }))
     }
-    if (!e.agentId) {
+    if (!e.agentId && e.reason === 'answer' && !e.isAborted && e.answer.trim()) {
       await update($, mensagens, n => n + 1)
       await guardarResposta($)
       await update($, feliz, () => true)
-      $.clock.after(4000, () => update($, feliz, () => false))
+      felizTimer?.cancel()
+      felizTimer = $.clock.after(4000, () => { void update($, feliz, () => false).catch(() => undefined) })
     }
     return r
   })

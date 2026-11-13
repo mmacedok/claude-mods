@@ -60,6 +60,9 @@ declare module 'claude-code' {
       barras: BarraAgente[]
       contas: Record<string, ContaSemanal>
       esperando: Esperando[]
+      tokensPrincipal: number | null
+      semanalCodexVivo: { semanal: number; em: number } | null
+      cotasCodexEm: number
     }
   }
 }

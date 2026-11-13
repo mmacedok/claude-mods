@@ -1401,6 +1401,9 @@ const PASTA_LIVE: Record<'Gemini' | 'Codex', string> = {
 const FERRAMENTA_JOB = /^mcp__(gemini__gemini_(start|run)|codex__codex_(start|tarefa))$/
 const BARRAS_MAX = 12
 const AGENTES_VISIVEIS = 4
+// Rótulos de mesmo comprimento: se o app não esticar o botão até a célula, ele ainda sai com a mesma largura.
+// O espaço de largura zero nas pontas impede que alguém apare os espaços que não quebram.
+const largo = (rotulo: string, antes: number, depois = antes) => `\u200B${'\u00A0'.repeat(antes)}${rotulo}${'\u00A0'.repeat(depois)}\u200B`
 const SOME_DEPOIS_MS = 10 * 60 * 1000 // a barra de um agente que acabou sai sozinha depois disto
 const RECENTE_MS = 3 * 60 * 1000 // uma subida do semanal logo depois do fim ainda é do agente que acabou
 const ESFORCOS = ['low', 'medium', 'high', 'xhigh', 'max']
@@ -2258,14 +2261,12 @@ export const register: Register = on => {
                   const extra = b.tarefas ? `${b.tarefas.feitas}/${b.tarefas.total}` : b.imagens ? `${b.imagens.prontas}/${b.imagens.total} img` : ''
                   const acao = b.estado === 'limite' && b.tentaDeNovo ? `sem cota até ${b.tentaDeNovo}` : b.acao
                   return (
-                    <Box key={`agente-${b.id}`} flexDirection="row" columnGap={1} alignItems="center" minWidth={0} {...(Svg ? { borderStyle: 'round', borderColor: MOLDURA, paddingX: 1 } : {})}>
+                    <Box key={`agente-${b.id}`} flexDirection="column" minWidth={0} {...(Svg ? { borderStyle: 'round', borderColor: MOLDURA, paddingX: 1 } : {})}>
+                    <Box key="cabeca" flexDirection="row" columnGap={1} alignItems="center" minWidth={0}>
                       <Text color={corMarca}>{marca}</Text>
                       <Text color={cor} bold>{b.nome}</Text>
                       {b.esforco ? <Text dimColor>{b.esforco}</Text> : null}
-                      <Text dimColor>·</Text>
-                      <Box flexGrow={1} flexShrink={1} minWidth={0}>
-                        <Text wrap="truncate-end">{acao}</Text>
-                      </Box>
+                      <Box flexGrow={1} />
                       {extra ? <Text dimColor>{extra}</Text> : null}
                       {Svg && (
                         <Svg
@@ -2279,6 +2280,9 @@ export const register: Register = on => {
                       <Text color={cor}>{mais}</Text>
                       <Button key={`fechar-${b.id}`} plain dimColor label="✕" onPress={() => fecharBarra($, b.id)} />
                     </Box>
+                    {/* A ação inteira embaixo do tubo: numa linha só com o tubo ela era cortada em "…". */}
+                    {acao ? <Text key="acao" dimColor wrap="wrap">{acao}</Text> : null}
+                    </Box>
                   )
                 })}
                 {abertas.length > AGENTES_VISIVEIS && <Text key="mais-agentes" dimColor>+{abertas.length - AGENTES_VISIVEIS} more</Text>}
@@ -2288,7 +2292,7 @@ export const register: Register = on => {
       </Box>
       </Box>
       {/* O painel: os frascos dos limites e a bateria numa prateleira, e os botões em grade embaixo. */}
-      <Box key="painel" flexDirection="column" alignItems="stretch" flexShrink={0} rowGap="xs" {...(Svg ? { borderStyle: 'round', borderColor: MOLDURA, paddingX: 1, paddingY: 'xs' as const } : {})}>
+      <Box key="painel" flexDirection="column" alignItems="stretch" flexShrink={0} rowGap={1} {...(Svg ? { borderStyle: 'round', borderColor: MOLDURA, paddingX: 1 } : {})}>
           {Svg && (cincoHoras || semana) && (
             <Box key="tubos-limite" flexDirection="row" alignItems="center" justifyContent="center" flexShrink={0}>
               {cincoHoras && <Svg source={comFase(`${sid}:5h`, tuboVertical('5h', cincoHoras.percentUsed), agora)} alt={`5 hour limit ${cincoHoras.percentUsed}%`} width={VT_W} height={VT_H} />}
@@ -2296,26 +2300,26 @@ export const register: Register = on => {
               {semana && <Svg source={comFase(`${sid}:wk`, tuboVertical('wk', semana.percentUsed), agora)} alt={`Weekly limit ${semana.percentUsed}%`} width={VT_W} height={VT_H} />}
             </Box>
           )}
-          {/* Svg usa pixels; Box aceita uma dimensão CSS em string. A grade mantém a largura dos três vasos mesmo sem dados. */}
-          <Box key="botoes" flexDirection="column" alignItems="stretch" rowGap="xs" width={Svg ? `${3 * VT_W}px` : undefined}>
+          {/* A grade estica até a largura do painel, que é a dos três vasos. */}
+          <Box key="botoes" flexDirection="column" alignItems="stretch" rowGap={1}>
             {/* Button não aceita largura/flex. Células de base zero dividem cada linha; a coluna estica o botão na horizontal. */}
-            <Box key="botoes-1" flexDirection="row" alignItems="stretch" columnGap="xs">
+            <Box key="botoes-1" flexDirection="row" alignItems="stretch" columnGap={1}>
               <Box flexDirection="column" alignItems="stretch" flexGrow={1} flexShrink={1} minWidth={0} width={Svg ? 0 : undefined}>
-                <Button key="mods" label="Mods" onPress={() => $.ui.open({ id: "mods", title: "Mods" })} />
+                <Button key="mods" label={largo('Mods', 5)} onPress={() => $.ui.open({ id: "mods", title: "Mods" })} />
               </Box>
               <Box flexDirection="column" alignItems="stretch" flexGrow={1} flexShrink={1} minWidth={0} width={Svg ? 0 : undefined}>
-                <Button key="stats" label="Stats" onPress={() => void alternarStats($)} />
+                <Button key="stats" label={largo('Stats', 6, 5)} onPress={() => void alternarStats($)} />
               </Box>
             </Box>
-            <Box key="botoes-2" flexDirection="row" alignItems="stretch" columnGap="xs">
+            <Box key="botoes-2" flexDirection="row" alignItems="stretch" columnGap={1}>
               <Box flexDirection="column" alignItems="stretch" flexGrow={1} flexShrink={1} minWidth={0} width={Svg ? 0 : undefined}>
-                <Button key="clear" label="Clear" onPress={() => limpar($)} />
+                <Button key="clear" label={largo('Clear', 5)} onPress={() => limpar($)} />
               </Box>
               <Box flexDirection="column" alignItems="stretch" flexGrow={1} flexShrink={1} minWidth={0} width={Svg ? 0 : undefined}>
                 <Button
                   key="handoff"
                   variant="primary"
-                  label={gerando ? 'Writing handoff…' : 'Handoff'}
+                  label={gerando ? 'Writing handoff…' : largo('Handoff', 3)}
                   onPress={() => handoff($)}
                 />
               </Box>

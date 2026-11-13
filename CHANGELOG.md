@@ -1,5 +1,9 @@
 # FunMeter changelog
 
+## 0.8.2 (2026-11-13)
+
+- Panel buttons: Mods, Stats and Clear spread across the panel, one under each flask, with Handoff centred below. The fixed-width columns are gone (the app does not stretch its buttons, so they left gaps).
+
 ## 0.8.1 (2026-11-13)
 
 - Panel fixes: the buttons no longer sit on top of the flask labels, the four buttons line up as a grid, and the battery label is "24h" so it reads at the same size as the others.

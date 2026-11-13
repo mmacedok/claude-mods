@@ -1400,7 +1400,6 @@ const PASTA_LIVE: Record<'Gemini' | 'Codex', string> = {
 const FERRAMENTA_JOB = /^mcp__(gemini__gemini_(start|run)|codex__codex_(start|tarefa))$/
 const BARRAS_MAX = 12
 const AGENTES_VISIVEIS = 4
-const COLUNA_BOTAO = 10 // largura de cada coluna da grade de botões, em colunas de texto
 const SOME_DEPOIS_MS = 10 * 60 * 1000 // a barra de um agente que acabou sai sozinha depois disto
 const RECENTE_MS = 3 * 60 * 1000 // uma subida do semanal logo depois do fim ainda é do agente que acabou
 const ESFORCOS = ['low', 'medium', 'high', 'xhigh', 'max']
@@ -2285,26 +2284,26 @@ export const register: Register = on => {
             {usadas.length > 0 && <Text dimColor wrap="truncate-end">Skills: {listaSkills}</Text>}
       </Box>
       {/* O painel: os frascos dos limites e a bateria numa prateleira, e os botões em grade embaixo. */}
-      <Box key="painel" flexDirection="column" alignItems="center" flexShrink={0} rowGap={1} {...(Svg ? { borderStyle: 'round', borderColor: MOLDURA, paddingX: 1 } : {})}>
+      <Box key="painel" flexDirection="column" alignItems="stretch" flexShrink={0} rowGap={1} {...(Svg ? { borderStyle: 'round', borderColor: MOLDURA, paddingX: 1 } : {})}>
           {Svg && (cincoHoras || semana) && (
-            <Box key="tubos-limite" flexDirection="row" alignItems="center" flexShrink={0}>
+            <Box key="tubos-limite" flexDirection="row" alignItems="center" justifyContent="center" flexShrink={0}>
               {cincoHoras && <Svg source={comFase(`${sid}:5h`, tuboVertical('5h', cincoHoras.percentUsed), agora)} alt={`5 hour limit ${cincoHoras.percentUsed}%`} width={VT_W} height={VT_H} />}
               {bateriaHoje !== null && <Svg source={comFase(`${sid}:24h`, bateria('24h', bateriaHoje), agora)} alt={`Today's battery (1/7 of the weekly limit, carried over at midnight): ${Math.round(bateriaHoje)}%`} width={VT_W} height={VT_H} />}
               {semana && <Svg source={comFase(`${sid}:wk`, tuboVertical('wk', semana.percentUsed), agora)} alt={`Weekly limit ${semana.percentUsed}%`} width={VT_W} height={VT_H} />}
             </Box>
           )}
-          <Box key="botoes-1" flexDirection="row" columnGap={1} justifyContent="center">
-            <Box flexDirection="column" width={COLUNA_BOTAO}><Button key="mods" label="Mods" onPress={() => $.ui.open({ id: "mods", title: "Mods" })} /></Box>
-            <Box flexDirection="column" width={COLUNA_BOTAO}><Button key="stats" label="Stats" onPress={() => void alternarStats($)} /></Box>
+          <Box key="botoes-1" flexDirection="row" columnGap={1} justifyContent="space-between">
+            <Button key="mods" label="Mods" onPress={() => $.ui.open({ id: "mods", title: "Mods" })} />
+            <Button key="stats" label="Stats" onPress={() => void alternarStats($)} />
+            <Button key="clear" label="Clear" onPress={() => limpar($)} />
           </Box>
           <Box key="botoes-2" flexDirection="row" columnGap={1} justifyContent="center">
-            <Box flexDirection="column" width={COLUNA_BOTAO}><Button key="clear" label="Clear" onPress={() => limpar($)} /></Box>
-            <Box flexDirection="column" width={COLUNA_BOTAO}><Button
+            <Button
               key="handoff"
               variant="primary"
               label={gerando ? 'Writing handoff…' : 'Handoff'}
               onPress={() => handoff($)}
-            /></Box>
+            />
           </Box>
       </Box>
       </Box>

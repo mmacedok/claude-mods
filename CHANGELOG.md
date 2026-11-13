@@ -1,5 +1,10 @@
 # FunMeter changelog
 
+## 0.8.4 (2026-11-13)
+
+- The mascot sits on the left of one column (tube, measures, agent rows, skills) instead of leaving an empty corner above it; with agents it lines up with their rows, without them it sits in the middle.
+- The measures fit in two lines: this conversation's tokens by type with the agents' summary ("3 agents · 2 active · 1 done"), then hit, cost, speed and reset. The session totals left the band.
+
 ## 0.8.3 (2026-11-13)
 
 - Layout as in the mock-up: the tube and the measures on top, the mascot below them beside the agent rows, and the panel on the right.

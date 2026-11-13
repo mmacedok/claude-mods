@@ -1404,7 +1404,6 @@ const AGENTES_VISIVEIS = 4
 // O app dá a cada botão a largura do rótulo. Espaços que não quebram dos dois lados deixam os quatro quase iguais;
 // o espaço de largura zero nas pontas impede que alguém os apare.
 const largo = (rotulo: string, antes: number, depois = antes) => `\u200B${'\u00A0'.repeat(antes)}${rotulo}${'\u00A0'.repeat(depois)}\u200B`
-const RECUO_MASCOTE = 10 // colunas de texto: o tubo começa onde acaba o mascote
 const SOME_DEPOIS_MS = 10 * 60 * 1000 // a barra de um agente que acabou sai sozinha depois disto
 const RECENTE_MS = 3 * 60 * 1000 // uma subida do semanal logo depois do fim ainda é do agente que acabou
 const ESFORCOS = ['low', 'medium', 'high', 'xhigh', 'max']
@@ -2153,6 +2152,7 @@ export const register: Register = on => {
     // só os agentes em uso: os que rodam e os que acabaram há pouco (o +x% deles ainda interessa)
     const abertas = barrasLidas.filter(b => !b.fechada && (b.estado === 'rodando' || b.fim === undefined || agora - b.fim < SOME_DEPOIS_MS))
     const ativas = abertas.filter(b => b.estado === 'rodando').length
+    const concluidas = abertas.filter(b => b.estado === 'concluido').length
     const listaSkills =
       usadas.length === 0
         ? 'none'
@@ -2179,10 +2179,15 @@ export const register: Register = on => {
         </Box>
       )}
       <Box flexDirection="row" columnGap={2} alignItems="center">
-      {/* À esquerda: em cima o tubo e as medidas, recuados da largura do mascote; embaixo o mascote ao lado das linhas dos agentes.
-          À direita o painel com os frascos e os botões. */}
-      <Box key="esquerda" flexDirection="column" flexGrow={1} flexShrink={1} minWidth={0} rowGap={1}>
-      <Box key="medidas" flexDirection="column" minWidth={0} marginLeft={Svg ? RECUO_MASCOTE : 0}>
+      {/* À esquerda o mascote e, ao lado dele, uma coluna só: o tubo, as medidas, uma linha por agente e as skills.
+          Com agentes o mascote desce até as linhas deles; sem agentes fica no meio. À direita o painel com os frascos e os botões. */}
+      <Box key="esquerda" flexDirection="row" columnGap={2} flexGrow={1} flexShrink={1} minWidth={0} alignItems={abertas.length > 0 ? 'flex-end' : 'center'}>
+        {Svg && mascote(modo).length <= SVG_MAX && (
+          <Box key="mascote" flexShrink={0}>
+            <Svg source={mascote(modo)} alt="Claude mascot" width={COLUNAS * CEL} height={LINHAS * CEL} />
+          </Box>
+        )}
+      <Box key="medidas" flexDirection="column" flexGrow={1} flexShrink={1} minWidth={0}>
         <Box flexDirection="row" gap={1} alignItems="center">
           {Svg ? (
             <Box key="tubo" flexGrow={1} flexShrink={1} minWidth={0}>
@@ -2205,13 +2210,17 @@ export const register: Register = on => {
             </Text>
           </Box>
         </Box>
-            <Box flexDirection="row" flexWrap="wrap" columnGap={2}>
+            <Box key="tipos" flexDirection="row" flexWrap="wrap" columnGap={2}>
               {TIPOS.map(x => (
                 <Text key={x.campo}>
                   <Text color={x.cor}>●</Text> <Text dimColor>{x.curto}</Text> <Text bold>{num(f[x.campo])}</Text>
-                  <Text dimColor>/{num(t[x.campo])}</Text>
                 </Text>
               ))}
+              {abertas.length > 0 && (
+                <Text key="resumo-agentes" dimColor>
+                  {abertas.length} {abertas.length === 1 ? 'agent' : 'agents'} · {ativas} active{concluidas > 0 ? ` · ${concluidas} done` : ''}
+                </Text>
+              )}
             </Box>
             {/* Segunda linha: o que se mede da conversa (acerto do cache, custo, velocidade, quando o limite volta, os agentes). */}
             <Box key="metricas" flexDirection="row" flexWrap="wrap" columnGap={2}>
@@ -2236,24 +2245,11 @@ export const register: Register = on => {
                   5h{falta(cincoHoras.resetsAt, agora)}
                 </Text>
               )}
-              {abertas.length > 0 && (
-                <Text key="resumo-agentes" dimColor>
-                  {abertas.length} {abertas.length === 1 ? 'agent' : 'agents'} · {ativas} active
-                </Text>
-              )}
             </Box>
-      </Box>
-      <Box key="baixo" flexDirection="row" columnGap={1} alignItems="center">
-        {Svg && mascote(modo).length <= SVG_MAX && (
-          <Box key="mascote" flexShrink={0}>
-            <Svg source={mascote(modo)} alt="Claude mascot" width={COLUNAS * CEL} height={LINHAS * CEL} />
-          </Box>
-        )}
-        <Box key="ao-lado" flexDirection="column" flexGrow={1} flexShrink={1} minWidth={0}>
             {/* Uma linha por agente em uso (subagente do Claude, job do Gemini ou do Codex): nome do modelo, esforço, ação, tarefas,
                 o tubo do semanal (a base de quando começou, fosca, e o que ele gastou, vivo) e o ✕. Some sozinha um tempo depois de acabar. */}
             {abertas.length > 0 && (
-              <Box key="agentes" flexDirection="column">
+              <Box key="agentes" flexDirection="column" marginTop={1}>
                 {abertas.slice(0, AGENTES_VISIVEIS).map(b => {
                   const cor = COR_PROVEDOR[b.provedor]
                   const pct = b.gasto * 100
@@ -2291,7 +2287,6 @@ export const register: Register = on => {
               </Box>
             )}
             {usadas.length > 0 && <Text dimColor wrap="truncate-end">Skills: {listaSkills}</Text>}
-        </Box>
       </Box>
       </Box>
       {/* O painel: os frascos dos limites e a bateria numa prateleira, e os botões em grade embaixo. */}

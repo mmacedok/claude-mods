@@ -2144,7 +2144,8 @@ export const register: Register = on => {
       : extra > 0
         ? `Good time for a handoff: ${num(extra)} tokens of history, it pays for itself in ~${Math.max(1, Math.ceil(HANDOFF_CUSTO / (extra * 0.1)))} messages`
         : `Good time for a handoff: context at ${percent}%`
-    // O desenho nasce um pouco mais largo que o espaço; sem `width`, o app o encolhe até a vaga e o tubo encosta no x%.
+    // A Box em coluna estica o Svg (sem width explícito) até a vaga, mantendo TUBO_H fixo.
+    // A largura interna fica limitada para os paths animados não excederem SVG_MAX em janelas largas.
     const tuboW = Math.max(220, Math.min(1400, Math.round((e.props.bodyColumns ?? 100) * 7.6)))
     // só os agentes em uso: os que rodam e os que acabaram há pouco (o +x% deles ainda interessa)
     const abertas = barrasLidas.filter(b => !b.fechada && (b.estado === 'rodando' || b.fim === undefined || agora - b.fim < SOME_DEPOIS_MS))
@@ -2175,23 +2176,23 @@ export const register: Register = on => {
           <Button key="fechar-aviso" plain label="✕" onPress={() => (avisoParado ? fecharParado($) : fecharAviso($))} />
         </Box>
       )}
-      <Box flexDirection="row" columnGap={2} alignItems="center">
-      {/* À esquerda o mascote e, ao lado dele, uma coluna só: o tubo, as medidas, uma linha por agente e as skills.
-          Com agentes o mascote desce até as linhas deles; sem agentes fica no meio. À direita o painel com os frascos e os botões. */}
-      <Box key="esquerda" flexDirection="row" columnGap={2} flexGrow={1} flexShrink={1} minWidth={0} alignItems={abertas.length > 0 ? 'flex-end' : 'center'}>
+      <Box flexDirection="row" columnGap={1} alignItems="stretch">
+      {/* O painel e as medidas começam no topo; o mascote fica na base da faixa.
+          Tubo, métricas e agentes compartilham a mesma borda esquerda, sem distribuir espaço vertical. */}
+      <Box key="esquerda" flexDirection="row" columnGap={1} flexGrow={1} flexShrink={1} minWidth={0} alignItems="stretch">
         {Svg && mascote(modo).length <= SVG_MAX && (
-          <Box key="mascote" flexShrink={0}>
+          <Box key="mascote" alignSelf="flex-end" flexShrink={0}>
             <Svg source={mascote(modo)} alt="Claude mascot" width={COLUNAS * CEL} height={LINHAS * CEL} />
           </Box>
         )}
-      <Box key="medidas" flexDirection="column" flexGrow={1} flexShrink={1} minWidth={0}>
-        <Box flexDirection="row" gap={1} alignItems="center">
+      <Box key="medidas" flexDirection="column" rowGap={0} flexGrow={1} flexShrink={1} minWidth={0}>
+        <Box key="contexto-linha" flexDirection="row" columnGap={1} alignItems="center" minWidth={0}>
           {Svg ? (
-            <Box key="tubo" flexGrow={1} flexShrink={1} minWidth={0}>
+            <Box key="tubo" flexDirection="column" alignItems="stretch" flexGrow={1} flexShrink={1} minWidth={0}>
               <Svg key="tubo-svg" source={comFase(`${sid}:tubo`, tuboGuardadoDe(sid, noTubo, janela, tuboW), agora)} alt={`Context ${percent}%`} height={TUBO_H} />
             </Box>
           ) : (
-            <Box flexDirection="row" flexGrow={1} columnGap={0}>
+            <Box key="tubo" flexDirection="row" flexGrow={1} flexShrink={1} minWidth={0} columnGap={0}>
               {TIPOS.filter(x => noTubo[x.campo] > 0).map(x => (
                 <Box key={x.campo} flexGrow={escala(noTubo[x.campo], janela)} minWidth={1} height={1} backgroundColor={x.cor} />
               ))}
@@ -2246,7 +2247,7 @@ export const register: Register = on => {
             {/* Uma linha por agente em uso (subagente do Claude, job do Gemini ou do Codex): nome do modelo, esforço, ação, tarefas,
                 o tubo do semanal (a base de quando começou, fosca, e o que ele gastou, vivo) e o ✕. Some sozinha um tempo depois de acabar. */}
             {abertas.length > 0 && (
-              <Box key="agentes" flexDirection="column" marginTop={1}>
+              <Box key="agentes" flexDirection="column" rowGap={0} marginTop={Svg ? 1 : 0}>
                 {abertas.slice(0, AGENTES_VISIVEIS).map(b => {
                   const cor = COR_PROVEDOR[b.provedor]
                   const pct = b.gasto * 100

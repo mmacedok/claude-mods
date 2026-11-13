@@ -643,15 +643,35 @@ function emFase(svg: string, ms: number): string {
 }
 // Os guardados são por sessão ("lugar" leva o id dela) e limitados: duas sessões no mesmo processo não se atropelam
 // (cada troca de texto recarregaria a imagem) e o Map não cresce para sempre.
-const MAX_GUARDADOS = 12
+// Sai o menos usado: um acerto põe a chave no fim. Com 12 e FIFO, o 9º agente de uma sessão expulsava o tubo,
+// que expulsava os frascos, e cada falta trocava o begin= e reiniciava as animações.
+const MAX_GUARDADOS = 64
 function guardar<V>(m: Map<string, V>, chave: string, valor: V) {
-  if (!m.has(chave) && m.size >= MAX_GUARDADOS) m.delete(m.keys().next().value as string)
+  m.delete(chave)
+  if (m.size >= MAX_GUARDADOS) m.delete(m.keys().next().value as string)
   m.set(chave, valor)
+}
+function achar<V>(m: Map<string, V>, chave: string): V | undefined {
+  const v = m.get(chave)
+  if (v !== undefined) {
+    m.delete(chave)
+    m.set(chave, v)
+  }
+  return v
+}
+// Frascos, bateria e tubos dos agentes: o mesmo texto para os mesmos números, sem refazer o SVG a cada quadro.
+const desenhoGuardado = new Map<string, string>()
+function guardado(chave: string, fazer: () => string): string {
+  const v = achar(desenhoGuardado, chave)
+  if (v !== undefined) return v
+  const novo = fazer()
+  guardar(desenhoGuardado, chave, novo)
+  return novo
 }
 const emFaseGuardado = new Map<string, { cru: string; pronto: string }>()
 function comFase(lugar: string, cru: string, ms: number): string {
-  const guardado = emFaseGuardado.get(lugar)
-  if (guardado?.cru === cru) return guardado.pronto
+  const g = achar(emFaseGuardado, lugar)
+  if (g?.cru === cru) return g.pronto
   const pronto = emFase(cru, ms)
   guardar(emFaseGuardado, lugar, { cru, pronto })
   return pronto
@@ -660,7 +680,7 @@ function comFase(lugar: string, cru: string, ms: number): string {
 const tuboGuardado = new Map<string, { chave: string; cru: string }>()
 function tuboGuardadoDe(lugar: string, f: Fatias, janela: number, W: number): string {
   const chave = `${f.lido},${f.escrito},${f.input},${f.output},${janela},${W}`
-  const g = tuboGuardado.get(lugar)
+  const g = achar(tuboGuardado, lugar)
   if (g?.chave === chave) return g.cru
   const cru = tubo(f, janela, W)
   guardar(tuboGuardado, lugar, { chave, cru })
@@ -1336,10 +1356,11 @@ function acharLimites(o: unknown): Record<string, unknown> | null {
 function lerCodex(texto: string, agora: number): Cota[] | null {
   const linhas = texto.split('\n')
   for (let i = linhas.length - 1; i >= 0; i--) {
-    if (!linhas[i].includes('"rate_limits"')) continue
+    const linha = linhas[i]
+    if (!linha?.includes('"rate_limits"')) continue
     let rl: Record<string, unknown> | null = null
     try {
-      rl = acharLimites(JSON.parse(linhas[i]))
+      rl = acharLimites(JSON.parse(linha))
     } catch {
       continue
     }
@@ -1353,7 +1374,7 @@ function lerCodex(texto: string, agora: number): Cota[] | null {
       const reiniciou = typeof b.resets_at === 'number' && b.resets_at * 1000 <= agora
       lista.push({ nome: 'Codex', janela, usado: reiniciou ? 0 : b.used_percent / 100 })
     }
-    return lista.length ? lista : null
+    if (lista.length) return lista
   }
   return null
 }
@@ -1537,8 +1558,10 @@ async function contarSemanal($: EngineInterface) {
     })
     contasAgora[g] = { semanal: S, tokens }
   }
-  await update($, contas, () => contasAgora)
-  await update($, barras, () => novas)
+  if (JSON.stringify(contasAgora) !== JSON.stringify(await read($, contas))) await update($, contas, () => contasAgora)
+  // só base e gasto, por id, sobre o valor de agora: o que outro gancho gravou durante os awaits fica
+  const mudou = new Map(novas.filter((b, i) => b !== lista[i]).map(b => [b.id, { base: b.base, gasto: b.gasto }]))
+  if (mudou.size) await update($, barras, atual => atual.map(b => (mudou.has(b.id) ? { ...b, ...mudou.get(b.id)! } : b)))
 }
 
 async function novaBarra($: EngineInterface, b: Omit<BarraAgente, 'nome' | 'base' | 'gasto' | 'tokens'> & { tokens?: number }) {
@@ -2081,7 +2104,7 @@ export const register: Register = on => {
 
     // Everything is read at once and next(e) is asked last: while Claude works the band redraws many times a second,
     // and a slow draw that asked next(e) first left the band without the meter whenever a newer redraw cut it short.
-    const [lidas, m, t, gasto, estimativa, usadas, lims, gerando, contente, agora, base, msgs, fechouEm, plano, tokSeg, respondeuEm, estaParado, paradoFechou, sid, codex, barrasLidas] = await Promise.all([
+    const [lidas, m, t, gasto, estimativa, usadas, lims, gerando, contente, agora, base, msgs, fechouEm, tokSeg, respondeuEm, estaParado, paradoFechou, sid, barrasLidas] = await Promise.all([
       read($, fatias),
       read($, medida),
       read($, totais),
@@ -2095,13 +2118,11 @@ export const register: Register = on => {
       read($, piso),
       read($, mensagens),
       read($, fechado),
-      read($, cotas),
       read($, velocidade),
       read($, ultimaResposta),
       read($, parado),
       read($, paradoFechado),
       $.session.id().catch(() => ''),
-      read($, cotasCodex),
       read($, barras),
     ])
 
@@ -2111,12 +2132,12 @@ export const register: Register = on => {
     let meu: any
     try {
       meu = desenhar()
-      guardar(ultimoBom, sid, meu)
+      guardar(ultimoBom, `${sid}:${e.surface}`, meu)
     } catch (erro) {
       // a draw that throws makes the engine show the band without the meter: show the last good one and why
       meu = (
         <Box flexDirection="column">
-          {ultimoBom.get(sid)}
+          {ultimoBom.get(`${sid}:${e.surface}`)}
           <Text dimColor>Context meter error: {String(erro).slice(0, 160)}</Text>
         </Box>
       )
@@ -2159,6 +2180,8 @@ export const register: Register = on => {
     // A largura interna fica limitada para os paths animados não excederem SVG_MAX em janelas largas.
     const tuboW = Math.max(220, Math.min(1400, Math.round((e.props.bodyColumns ?? 100) * 7.6)))
     // só os agentes em uso: os que rodam e os que acabaram há pouco (o +x% deles ainda interessa)
+    const tuboSvg = Svg ? comFase(`${sid}:tubo`, tuboGuardadoDe(sid, noTubo, janela, tuboW), agora) : ''
+    const tuboCabe = tuboSvg !== '' && tuboSvg.length <= SVG_MAX
     const abertas = barrasLidas.filter(b => !b.fechada && (b.estado === 'rodando' || b.fim === undefined || agora - b.fim < SOME_DEPOIS_MS))
     const ativas = abertas.filter(b => b.estado === 'rodando').length
     const concluidas = abertas.filter(b => b.estado === 'concluido').length
@@ -2198,9 +2221,9 @@ export const register: Register = on => {
         )}
       <Box key="medidas" flexDirection="column" rowGap={0} flexGrow={1} flexShrink={1} minWidth={0}>
         <Box key="contexto-linha" flexDirection="row" columnGap={1} alignItems="center" minWidth={0}>
-          {Svg ? (
+          {Svg && tuboCabe ? (
             <Box key="tubo" flexDirection="column" alignItems="stretch" flexGrow={1} flexShrink={1} minWidth={0}>
-              <Svg key="tubo-svg" source={comFase(`${sid}:tubo`, tuboGuardadoDe(sid, noTubo, janela, tuboW), agora)} alt={`Context ${percent}%`} height={TUBO_H} />
+              <Svg key="tubo-svg" source={tuboSvg} alt={`Context ${percent}%`} height={TUBO_H} />
             </Box>
           ) : (
             <Box key="tubo" flexDirection="row" flexGrow={1} flexShrink={1} minWidth={0} columnGap={0}>
@@ -2278,7 +2301,7 @@ export const register: Register = on => {
                       {extra ? <Text dimColor>{extra}</Text> : null}
                       {Svg && (
                         <Svg
-                          source={comFase(`${sid}:ag:${b.id}`, tuboAgente(b.provedor, b.estado, b.base, b.gasto), agora)}
+                          source={comFase(`${sid}:ag:${b.id}`, guardado(`ag:${b.provedor}:${b.estado}:${b.base}:${b.gasto}`, () => tuboAgente(b.provedor, b.estado, b.base, b.gasto)), agora)}
                           alt={`${b.nome}: weekly limit ${total}, this agent ${mais}`}
                           width={AG_W}
                           height={AG_H}
@@ -2303,25 +2326,25 @@ export const register: Register = on => {
       <Box key="painel" flexDirection="column" alignItems="stretch" flexShrink={0} rowGap={1} {...(Svg ? { borderStyle: 'round', borderColor: MOLDURA, paddingX: 1 } : {})}>
           {Svg && (cincoHoras || semana) && (
             <Box key="tubos-limite" flexDirection="row" alignItems="center" justifyContent="center" flexShrink={0}>
-              {cincoHoras && <Svg source={comFase(`${sid}:5h`, tuboVertical('5h', cincoHoras.percentUsed), agora)} alt={`5 hour limit ${cincoHoras.percentUsed}%`} width={VT_W} height={VT_H} />}
-              {bateriaHoje !== null && <Svg source={comFase(`${sid}:24h`, bateria('24h', bateriaHoje), agora)} alt={`Today's battery (1/7 of the weekly limit, carried over at midnight): ${Math.round(bateriaHoje)}%`} width={VT_W} height={VT_H} />}
-              {semana && <Svg source={comFase(`${sid}:wk`, tuboVertical('wk', semana.percentUsed), agora)} alt={`Weekly limit ${semana.percentUsed}%`} width={VT_W} height={VT_H} />}
+              {cincoHoras && <Svg source={comFase(`${sid}:5h`, guardado(`5h:${cincoHoras.percentUsed}`, () => tuboVertical('5h', cincoHoras.percentUsed)), agora)} alt={`5 hour limit ${cincoHoras.percentUsed}%`} width={VT_W} height={VT_H} />}
+              {bateriaHoje !== null && <Svg source={comFase(`${sid}:24h`, guardado(`24h:${Math.round(bateriaHoje)}`, () => bateria('24h', Math.round(bateriaHoje))), agora)} alt={`Today's battery (1/7 of the weekly limit, carried over at midnight): ${Math.round(bateriaHoje)}%`} width={VT_W} height={VT_H} />}
+              {semana && <Svg source={comFase(`${sid}:wk`, guardado(`wk:${semana.percentUsed}`, () => tuboVertical('wk', semana.percentUsed)), agora)} alt={`Weekly limit ${semana.percentUsed}%`} width={VT_W} height={VT_H} />}
             </Box>
           )}
           {/* A grade estica até a largura do painel, que é a dos três vasos. */}
-          <Box key="botoes" flexDirection="column" alignItems="stretch" rowGap={1}>
+          <Box key="botoes" flexDirection="column" alignItems="stretch" rowGap={1} minWidth={Svg ? 24 : undefined}>
             {/* Button não aceita largura/flex. Células de base zero dividem cada linha; a coluna estica o botão na horizontal. */}
             <Box key="botoes-1" flexDirection="row" alignItems="stretch" columnGap={1}>
               <Box flexDirection="column" alignItems="stretch" flexGrow={1} flexShrink={1} minWidth={0} width={Svg ? 0 : undefined}>
-                <Button key="mods" label={largo('Mods', 5)} onPress={() => $.ui.open({ id: "mods", title: "Mods" })} />
+                <Button key="mods" label={Svg ? largo('Mods', 5) : largo('Mods', 4, 5)} onPress={() => $.ui.open({ id: "mods", title: "Mods" })} />
               </Box>
               <Box flexDirection="column" alignItems="stretch" flexGrow={1} flexShrink={1} minWidth={0} width={Svg ? 0 : undefined}>
-                <Button key="stats" label={largo('Stats', 6, 5)} onPress={() => void alternarStats($)} />
+                <Button key="stats" label={Svg ? largo('Stats', 6, 5) : largo('Stats', 4)} onPress={() => void alternarStats($)} />
               </Box>
             </Box>
             <Box key="botoes-2" flexDirection="row" alignItems="stretch" columnGap={1}>
               <Box flexDirection="column" alignItems="stretch" flexGrow={1} flexShrink={1} minWidth={0} width={Svg ? 0 : undefined}>
-                <Button key="clear" label={largo('Clear', 5)} onPress={() => limpar($)} />
+                <Button key="clear" label={Svg ? largo('Clear', 5) : largo('Clear', 4)} onPress={() => limpar($)} />
               </Box>
               <Box flexDirection="column" alignItems="stretch" flexGrow={1} flexShrink={1} minWidth={0} width={Svg ? 0 : undefined}>
                 <Button

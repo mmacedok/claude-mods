@@ -1,5 +1,16 @@
 # FunMeter changelog
 
+## 0.8.6 (2026-11-13)
+
+Fixes from a three-agent review:
+
+- Drawing caches keep the most used entries (64, was 12 first-in-first-out): a session with many agents no longer evicts the tube and flasks, which restarted their animations.
+- Flasks, battery and agent tubes are cached by their numbers instead of rebuilt on every frame; the context tube falls back to the plain bar if its SVG ever passes the size limit.
+- The band no longer reads the Gemini and Codex quotas it does not draw, and the weekly attribution only writes when something changed (it redrew the band every 2 s) and no longer overwrites bars changed meanwhile.
+- The button grid keeps its width without the flasks, and the labels are equal on the terminal.
+- lerCodex: no unchecked index (the two old type errors), and a rate_limits line without numbers falls back to an earlier one.
+- The last good band is kept per surface, so a desktop tree never reaches the terminal.
+
 ## 0.8.5 (2026-11-13)
 
 - Every animation is a seamless loop: the mascot's legs and spin, the flasks' drop, splash and bubbles, the battery's light band and the blobs end where they start (docs/checar-loops.cjs checks all of them).

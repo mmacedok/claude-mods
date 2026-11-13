@@ -162,14 +162,36 @@ test('a Claude subagent gets a bar named after its model, with tasks, action and
     usage: { model: 'claude-haiku-5-5', input_tokens: 3000, output_tokens: 1000, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 },
   } as any)
   await semana(30) // a subida inteira foi do subagente: só ele gastou tokens no meio
+  // Com uma barra real: a coluna de medidas mantém tubo, métricas e agentes juntos,
+  // sem absorver o painel. Exercita também o fallback sem Svg e janelas largas.
+  for (const surface of SURFACES) {
+    for (const bodyColumns of [40, 120, 300]) {
+      const ui = await $.ui.mount({ plugin: 'funmeter', surface, component: 'AbovePrompt', props: { ...PROPS, bodyColumns } })
+      expect(await ui.drawn()).toBeDefined()
+      const esquerda = await ui.find({ key: 'esquerda' })
+      const medidas = await ui.find({ key: 'medidas' })
+      expect(esquerda).toBeDefined()
+      expect(medidas).toBeDefined()
+      const contem = (children: unknown[], key: string): boolean => children.some((c: any) =>
+        c && typeof c === 'object' && ((c.key ?? c.props?.key) === key || contem(c.children ?? [], key)),
+      )
+      for (const key of ['tubo', 'contexto', 'tipos', 'metricas', 'agente-a1']) {
+        expect(contem(medidas?.children ?? [], key)).toBe(true)
+      }
+      expect(contem(esquerda?.children ?? [], 'painel')).toBe(false)
+      expect(await ui.find({ key: 'painel' })).toBeDefined()
+      expect(await ui.find({ key: 'handoff' })).toBeDefined()
+      if (surface === 'terminal') expect(await ui.findAll({ type: 'Svg' })).toHaveLength(0)
+      else {
+        expect(await ui.find({ key: 'mascote' })).toBeDefined()
+        expect(await ui.find({ key: 'tubos-limite' })).toBeDefined()
+      }
+      const textos = ((await ui.findAll({ type: 'Text' })) as any[]).map(x => x.text)
+      for (const texto of ['Haiku', '1/2', '✓', '+3.0%']) expect(textos).toContain(texto)
+      await ui.unmount()
+    }
+  }
   const ui = await $.ui.mount({ plugin: 'funmeter', surface: 'desktop', component: 'AbovePrompt', props: PROPS })
-  expect(await ui.find({ key: 'agente-a1' })).toBeDefined()
-  expect(await ui.find({ key: 'painel' })).toBeDefined() // os frascos e os botões moram no mesmo painel
-  const textos = ((await ui.findAll({ type: 'Text' })) as any[]).map(x => x.text)
-  expect(textos).toContain('Haiku')
-  expect(textos).toContain('1/2')
-  expect(textos).toContain('✓')
-  expect(textos).toContain('+3.0%')
   await ui.press({ key: 'fechar-a1' })
   await ui.unmount()
   const de_novo = await $.ui.mount({ plugin: 'funmeter', surface: 'desktop', component: 'AbovePrompt', props: PROPS })

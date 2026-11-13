@@ -2526,7 +2526,7 @@ export const register: Register = on => {
       </Box>
       </Box>
       {/* O painel: só os botões, em grade 2×2. */}
-      <Box key="painel" flexDirection="column" alignItems="stretch" alignSelf="center" flexShrink={0} rowGap={.4} {...(Svg ? { borderStyle: 'round', borderColor: MOLDURA, backgroundColor: '#252726', paddingX: 1 } : {})}>
+      <Box key="painel" flexDirection="column" alignItems="stretch" alignSelf="flex-end" flexShrink={0} rowGap={.4} {...(Svg ? { borderStyle: 'round', borderColor: MOLDURA, backgroundColor: '#252726', paddingX: 1 } : {})}>
           <Box key="botoes" flexDirection="column" alignItems="stretch" rowGap={1} minWidth={Svg ? 24 : undefined}>
             {/* Button não aceita largura/flex. Células de base zero dividem cada linha; a coluna estica o botão na horizontal. */}
             <Box key="botoes-1" flexDirection="row" alignItems="stretch" columnGap={1}>

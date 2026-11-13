@@ -1,5 +1,9 @@
 # FunMeter changelog
 
+## 0.8.10 (2026-11-13)
+
+- The button panel sits on the bottom edge of the band, level with the flasks' base.
+
 ## 0.8.9 (2026-11-13)
 
 - The buttons work again: back to plain native buttons (the label drawn as a Text inside the button, in a fixed cell, came out cut as "Mo…" and did not press). Labels padded to the same width, as in 0.8.7.

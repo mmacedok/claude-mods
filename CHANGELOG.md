@@ -1,5 +1,9 @@
 # FunMeter changelog
 
+## 0.8.14 (2026-11-13)
+
+- The ✕ that closes an agent flask is hidden over its top corner and shows only while the pointer is over that flask (no layout shift).
+
 ## 0.8.13 (2026-11-13)
 
 - The agent flask's label reads name, weekly % and, in the bright colour, +what that agent alone consumed ("Sol 43% +3%"). Names longer than 7 letters are cut.

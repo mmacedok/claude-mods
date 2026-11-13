@@ -2527,7 +2527,10 @@ export const register: Register = on => {
                           height={FRASCO_H}
                         />
                         ) : null}
-                        <Button key={`fechar-${b.id}`} plain dimColor label="✕" onPress={() => fecharBarra($, b.id)} />
+                        {/* ✕ discreto: escondido, sobre o canto do frasco; aparece só com o mouse em cima deste agente (a Box com key é o escopo do hover) */}
+                        <Box position="absolute" top={0} right={0} display="none" hover={{ display: "flex" }}>
+                          <Button key={`fechar-${b.id}`} plain dimColor label="✕" onPress={() => fecharBarra($, b.id)} />
+                        </Box>
                       </Box>
                     )
                   })}

@@ -727,7 +727,7 @@ const GOTA_MARGEM_BASE = 7
 const MISTURA_TOPO = 7.6 // abaixo da superfície mais funda do gel
 const MISTURA_BASE = 27 // acima do fundo mais alto do gel
 const GOTA_MIN = 3.4 // o tubo costuma aparecer encolhido: abaixo disso a gota some, mesmo que a área real fosse menor
-const GOTAS_MAX = 16 // por tipo: com três tipos o desenho ainda cabe no limite de tamanho do SVG; a área se mantém com gotas maiores
+const GOTAS_MAX = 12 // por tipo: com três tipos o desenho ainda cabe no limite de tamanho do SVG; a área se mantém com gotas maiores
 const GOTA_QUADROS = 20
 const sorteio = (i: number) => {
   const v = Math.sin(i * 12.9898) * 43758.5453
@@ -826,9 +826,9 @@ function tubo(fCru: Fatias, janelaCrua: number, larguraCrua: number): string {
   const baixo = (x: number, t: number) => H - PAREDE - 1.1 - 0.9 * Math.sin(x / 19 + t)
   const contorno = (b: number, t: number, bojo: number) => {
     let d = `M${x0 - 1} ${topo(x0, t).toFixed(1)}`
-    for (let x = x0 + 6; x < b; x += 6) d += `L${x} ${topo(x, t).toFixed(1)}`
+    for (let x = x0 + 12; x < b; x += 12) d += `L${x} ${topo(x, t).toFixed(1)}`
     d += `L${b.toFixed(1)} ${topo(b, t).toFixed(1)}Q${(b + bojo).toFixed(1)} ${(H / 2).toFixed(1)} ${b.toFixed(1)} ${baixo(b, t).toFixed(1)}`
-    for (let x = Math.floor((b - 1) / 12) * 12; x > x0; x -= 12) d += `L${x} ${baixo(x, t).toFixed(1)}`
+    for (let x = Math.floor((b - 1) / 24) * 24; x > x0; x -= 24) d += `L${x} ${baixo(x, t).toFixed(1)}`
     return `${d}L${x0 - 1} ${baixo(x0, t).toFixed(1)}Z`
   }
 
@@ -849,24 +849,25 @@ function tubo(fCru: Fatias, janelaCrua: number, larguraCrua: number): string {
   const cores = pedacos
     .map(
       p =>
-        `<linearGradient id="c-${p.id}" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="${tom(p.cor, 0.45)}"/>` +
-        `<stop offset=".38" stop-color="${p.cor}"/><stop offset=".72" stop-color="${tom(p.cor, -0.22)}"/><stop offset="1" stop-color="${tom(p.cor, -0.62)}"/></linearGradient>`,
+        `<linearGradient id="c-${p.id}" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="${tom(p.cor, 0.52)}"/>` +
+        `<stop offset=".38" stop-color="${p.cor}"/><stop offset=".72" stop-color="${tom(p.cor, -0.08)}"/><stop offset="1" stop-color="${tom(p.cor, -0.3)}"/></linearGradient>`,
     )
     .join('')
 
   // brilhos molhados e bolhas dentro do gel; com gotas na mistura ficam fracos, para não parecerem cache write
-  const forcaBrilho = gotas ? 0.35 : 1
+  const forcaBrilho = gotas ? 0.65 : 1
   const brilhos: string[] = []
   for (let x = x0 + 8, i = 0; x < fim - 4; x += 15 + ((i * 13) % 17), i++) {
     brilhos.push(`<ellipse cx="${x}" cy="${(H * 0.4 + (i % 3) * 0.9).toFixed(1)}" rx="${4 + (i % 4) * 1.5}" ry="${(1.4 + (i % 2) * 0.7).toFixed(1)}" fill="#fff" fill-opacity="${((0.62 + (i % 3) * 0.14) * forcaBrilho).toFixed(2)}"/>`)
     if (!gotas && i % 2 === 0) brilhos.push(`<circle cx="${x + 7}" cy="${(H * 0.56 + (i % 3)).toFixed(1)}" r="1.1" fill="#fff" fill-opacity=".55"/>`)
   }
-  const bolhas =
-    gotas || fim - x0 < 40
-      ? ''
-      : [0, 1, 2, 3, 4]
-          .map(i => `<circle class="bo" style="animation-delay:calc(var(--bo) - ${(i * 3.6).toFixed(1)}s)" cx="${x0 - 2}" cy="${H * 0.33 + ((i * 5) % 9) * (H / 24)}" r="${(0.8 + (i % 3) * 0.4).toFixed(1)}" fill="#fff" fill-opacity=".38"/>`)
-          .join('')
+  // Bolhas sobem mesmo com tokens em gotas; a volta fica inteiramente apagada.
+  const quantidade = Math.min(9, Math.max(3, Math.floor((fim - x0) / 55)))
+  const bolhas = fim - x0 < 16 ? '' : Array.from({ length: quantidade }, (_, i) => {
+    const x = x0 + 5 + (fim - x0 - 10) * ((i + .4) / quantidade)
+    const dur = 3.1 + i * .43
+    return `<circle cx="${arred(x)}" cy="25" r="${.8 + i % 3 * .35}" fill="#fff" opacity="0"><animate attributeName="cy" dur="${dur}s" repeatCount="indefinite" keyTimes="0;.9;.99;1" values="25;8;8;25"/><animate attributeName="opacity" dur="${dur}s" repeatCount="indefinite" keyTimes="0;.12;.78;.9;1" values="0;.65;.65;0;0"/></circle>`
+  }).join('')
 
   // o vidro é reto e entra nos anéis de metal: um tubo contínuo, sem ponta arredondada
   const interno = `x="${x0}" y="${PAREDE}" width="${L}" height="${H - 2 * PAREDE}"`
@@ -888,7 +889,8 @@ function tubo(fCru: Fatias, janelaCrua: number, larguraCrua: number): string {
     `<linearGradient id="reflexo" x1="0" x2="1"><stop offset="0" stop-color="#fff" stop-opacity=".55"/><stop offset=".6" stop-color="#fff" stop-opacity=".2"/><stop offset="1" stop-color="#fff" stop-opacity=".4"/></linearGradient>` +
     `<linearGradient id="clarao" x1="0" x2="1"><stop offset="0" stop-color="#fff" stop-opacity="0"/><stop offset=".5" stop-color="#fff" stop-opacity=".55"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>` +
     `</defs>` +
-    `<rect ${casca} fill="url(#vidro)"/>` +
+    `<rect ${casca} fill="#080b0d"/><rect ${casca} fill="url(#vidro)"/>` +
+    (fim > x0 ? `<rect x="${x0}" y="5" width="${arred(fim - x0)}" height="22" rx="7" fill="${corDe('lido')}" opacity=".27" filter="url(#macio)"/>` : '') +
     `<g clip-path="url(#dentro)">${geis}<g clip-path="url(#mistura)">${gotas}</g><g clip-path="url(#cheio)"><g class="br">${brilhos.join('')}</g>${bolhas}</g></g>` +
     `<path d="M${x0 - 3} 1.5H${x0 + L + 3}M${x0 - 3} ${H - 1.5}H${x0 + L + 3}" fill="none" stroke="#c4dbe6" stroke-opacity=".55"/>` +
     // o vidro escurece ao entrar em cada anel, e tem marcas de medida a 25, 50 e 75% da janela
@@ -912,8 +914,11 @@ const COR_PROVEDOR = { Claude: LARANJA, Gemini: AZUL, Codex: VERDE_AGUA } as con
 
 // Os frascos dos limites do Claude (5h e semana) e a bateria do dia: mesmo tamanho, mesmo vidro e mesmo metal.
 const VT_W = 66
-const VT_H = 104
-const PRATELEIRA = 86 // onde os pés pousam
+const VT_H = 112
+// na faixa os frascos vão em fileira ao lado do mascote, a 80%: a linha fica da altura dele
+const FRASCO_W = Math.round(VT_W * 0.8)
+const FRASCO_H = Math.round(VT_H * 0.8)
+const PRATELEIRA = 91 // onde os pés pousam
 
 // A cor do gel anda com o uso: verde vazio, passa pelo amarelo e pelo laranja e chega ao vermelho cheio.
 // Gira o matiz em vez de misturar RGB, que no meio do caminho daria um marrom apagado.
@@ -932,8 +937,8 @@ function corDoUso(pct: number): string {
 
 // Metal em cilindro: borda escura, faixa de luz, meio-tom, sombra e um fio de luz do outro lado.
 const METAL =
-  '<stop offset="0" stop-color="#59636a"/><stop offset=".2" stop-color="#f3f7f9"/><stop offset=".48" stop-color="#9ba6ac"/>' +
-  '<stop offset=".82" stop-color="#434c52"/><stop offset="1" stop-color="#77848b"/>'
+  '<stop offset="0" stop-color="#394147"/><stop offset=".08" stop-color="#8a959c"/><stop offset=".22" stop-color="#fcfefe"/>' +
+  '<stop offset=".34" stop-color="#d0d6d9"/><stop offset=".55" stop-color="#778188"/><stop offset=".78" stop-color="#343c42"/><stop offset=".94" stop-color="#c0c9cc"/><stop offset="1" stop-color="#606b72"/>'
 // Reflexo comprido do vidro: nasce forte em cima e some antes do fundo.
 const REFLEXO_VIDRO =
   '<linearGradient id="e" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity="0"/><stop offset=".12" stop-color="#fff" stop-opacity=".75"/>' +
@@ -954,9 +959,14 @@ const pecaDeMetal = (x: number, y: number, w: number, h: number) =>
   `<rect x="${x + 0.5}" y="${n1(y + h - 1.3)}" width="${w - 1}" height="1.3" rx=".6" fill="#14191d" fill-opacity=".5"/>`
 // Dois pés de metal e a prateleira: ela vai de ponta a ponta do desenho, então frascos vizinhos formam uma só.
 const pesEPrateleira = (xE: number, xD: number, y: number) =>
-  [xE - 2.5, xD - 3.5].map(x => `<rect x="${x}" y="${n1(y)}" width="6" height="${n1(PRATELEIRA - y + 0.4)}" rx="1" fill="url(#m)"/>`).join('') +
-  `<rect x="0" y="${PRATELEIRA}" width="${VT_W}" height="3" fill="#8f9aa1"/><rect x="0" y="${PRATELEIRA}" width="${VT_W}" height=".9" fill="#f3f7f9" fill-opacity=".8"/>` +
-  `<rect x="0" y="${PRATELEIRA + 2.1}" width="${VT_W}" height=".9" fill="#14191d" fill-opacity=".55"/>`
+  // Viga em perspectiva: topo, face, sombra, pés e parafusos.
+  `<ellipse cx="${VT_W / 2}" cy="${PRATELEIRA + 5}" rx="31" ry="2.5" fill="#000" opacity=".55"/>` +
+  [xE - 3, xD - 3].map(x =>
+    pecaDeMetal(x, y, 6, Math.max(2, PRATELEIRA - y)) +
+    `<circle cx="${x + 3}" cy="${n1(y + 2)}" r="1.6" fill="#2a3033" stroke="#dce3e5" stroke-width=".6"/><path d="M${x + 2} ${n1(y + 2)}h2" stroke="#899398" stroke-width=".6"/>`
+  ).join('') +
+  `<path d="M0 ${PRATELEIRA}L5 ${PRATELEIRA - 3}H${VT_W - 5}L${VT_W} ${PRATELEIRA}Z" fill="#a8b1b4"/>` +
+  `<rect y="${PRATELEIRA}" width="${VT_W}" height="3.3" fill="url(#m)"/><path d="M0 ${PRATELEIRA}H${VT_W}" stroke="#f4f7f8" stroke-width=".8"/><path d="M0 ${PRATELEIRA + 3.3}H${VT_W}" stroke="#080b0e" stroke-width="1"/>`
 const rotuloDoFrasco = (texto: string, tamanho: number, cor: string, base = VT_H - 2.5) =>
   `<text x="${VT_W / 2}" y="${base}" text-anchor="middle" font-size="${tamanho}" font-weight="600" font-family="system-ui,sans-serif" fill="${cor}">${texto}</text>`
 // O líquido tem volume: sombreado de cilindro na horizontal e, por cima, claro junto à superfície e escuro no fundo.
@@ -973,8 +983,8 @@ function tuboVertical(rotulo: string, usado: number): string {
   const xE = 15
   const xD = 51
   const cx = (xE + xD) / 2
-  const yT = 8
-  const yB = 76
+  const yT = 12
+  const yB = 80
   const R = 5
   const nivel = yB - (pct / 100) * (yB - yT)
   const altura = yB - nivel
@@ -1052,14 +1062,14 @@ function tuboVertical(rotulo: string, usado: number): string {
     luz +
     `<path d="${vidro}Z" fill="url(#v)"/>` +
     `<g clip-path="url(#d)">${gel}${impacto}<path d="${marcas}" stroke="#fff" stroke-opacity=".32" stroke-width=".8" fill="none"/></g>` +
-    `<path d="${vidro}" fill="none" stroke="#d6ecf7" stroke-opacity=".75" stroke-width="1.2"/>` +
+    `<path d="${vidro}" fill="none" stroke="#d6ecf7" stroke-opacity=".8" stroke-width="1.6"/><path d="M${xE + 2} ${yT}V${yB - 5}Q${xE + 2} ${yB - 2} ${xE + 5} ${yB - 2}H${xD - 5}" fill="none" stroke="#d4eef7" stroke-opacity=".22" stroke-width="1"/>` +
     `<rect x="${xE + 2.2}" y="${yT + 2}" width="2.2" height="${yB - yT - 8}" rx="1.1" fill="url(#e)"/>` +
     `<rect x="${xD - 3.4}" y="${yT + 5}" width="1" height="${yB - yT - 14}" rx=".5" fill="#fff" fill-opacity=".2"/>` +
-    pecaDeMetal(xE - 4, 0, xD - xE + 8, 5) +
-    pecaDeMetal(xE - 1.8, 5, xD - xE + 3.6, yT - 5) +
+    pecaDeMetal(xE - 5, 2, xD - xE + 10, 7) +
+    pecaDeMetal(xE - 2, 9, xD - xE + 4, yT - 9) +
     `<path d="M${cx - 2.4} ${yT}h4.8l-1.2 1.6h-2.4z" fill="#394147"/>` +
     pesEPrateleira(xE, xD, yB + 4.6) +
-    pecaDeMetal(xE - 4, yB + 0.8, xD - xE + 8, 4.6) +
+    pecaDeMetal(xE - 5, yB + 0.8, xD - xE + 10, 5.6) +
     rotuloDoFrasco(`${rotulo} ${pct}%`, 13, '#ecece6') +
     `</svg>`
   )
@@ -1075,9 +1085,9 @@ function bateria(rotulo: string, restante: number): string {
   const carga = Math.max(0, Math.min(100, numero))
   const dourada = numero > 100
   const fraca = carga <= BATERIA_FRACA
-  const cor = dourada ? OURO : corDoUso(100 - carga)
-  const xE = 18
-  const xD = 48
+  const cor = dourada ? OURO : fraca ? '#FF4348' : corDoUso(100 - carga)
+  const xE = 16
+  const xD = 50
   const cx = (xE + xD) / 2
   const yT = 12
   const yB = 80
@@ -1165,7 +1175,7 @@ const COR_ESTADO: Partial<Record<BarraAgente['estado'], string>> = { erro: VERME
 function tuboAgente(provedor: BarraAgente['provedor'], estado: BarraAgente['estado'], baseCrua: number | null, gastoCru: number): string {
   const entre = (v: number) => Math.max(0, Math.min(1, Number.isFinite(v) ? v : 0))
   const cor = COR_PROVEDOR[provedor]
-  const viva = COR_ESTADO[estado] ?? cor
+  const viva = estado === 'concluido' ? '#75ED16' : COR_ESTADO[estado] ?? { Claude: '#FF9024', Gemini: '#36BFFF', Codex: '#25E4D1' }[provedor]
   const rodando = estado === 'rodando'
   const x0 = 3
   const x1 = AG_W - 3
@@ -1181,14 +1191,14 @@ function tuboAgente(provedor: BarraAgente['provedor'], estado: BarraAgente['esta
   const xg = xb + larg
   const borda = (a: number) => `M${n1(xb)} ${yT}H${n1(xg + a)}Q${n1(xg + a + 2.4)} ${meio} ${n1(xg - a)} ${yB}H${n1(xb)}Z`
   const bolha = (cy: number, r: number, dur: number) =>
-    `<circle cy="${cy}" r="${r}" fill="#fff" opacity="0"><animate attributeName="cx" dur="${dur}s" repeatCount="indefinite" keyTimes="0;.98;1" values="${n1(xb + 2)};${n1(xg - 3)};${n1(xb + 2)}"/>` +
+    `<circle cy="${cy}" r="${r}" fill="#fff" opacity="0"><animate attributeName="cx" dur="${dur}s" repeatCount="indefinite" keyTimes="0;.98;1" values="${n1(x0 + 3)};${n1(xg - 3)};${n1(x0 + 3)}"/>` +
     `<animate attributeName="opacity" dur="${dur}s" repeatCount="indefinite" keyTimes="0;.15;.8;.98;1" values="0;.7;.7;0;0"/></circle>`
   const liquido =
     larg > 0
       ? `<path fill="url(#g)" d="${borda(0)}">${rodando ? vaivem(borda, 1.2, 2.4) : ''}` +
         (estado === 'limite' ? `<animate attributeName="opacity" dur="2.4s" repeatCount="indefinite" ${SUAVE} values="1;.45;1"/>` : '') +
         `</path>` +
-        (rodando && larg > 16 ? bolha(meio - 2, 0.9, 2.8) + bolha(meio + 2.4, 0.7, 3.7) + bolha(meio, 1.1, 4.9) : '')
+        (rodando && xg - x0 > 16 ? bolha(meio - 2, 0.9, 2.8) + bolha(meio + 2.4, 0.7, 3.7) + bolha(meio, 1.1, 4.9) : '')
       : ''
   const brilhoT = 4.8 // duas ondulações; a opacidade esconde toda a volta
   const brilho = rodando
@@ -1196,7 +1206,7 @@ function tuboAgente(provedor: BarraAgente['provedor'], estado: BarraAgente['esta
       `<animate attributeName="opacity" dur="${brilhoT}s" repeatCount="indefinite" keyTimes="0;.02;.63;.65;1" values="0;1;1;0;0"/></rect>`
     : ''
   const halo = rodando
-    ? `<rect x="${n1(xb - 2)}" y="1" width="${n1(larg + 4)}" height="${AG_H - 2}" rx="5" fill="${viva}" filter="url(#b)"><animate attributeName="opacity" dur="2.4s" repeatCount="indefinite" ${SUAVE} values=".25;.9;.25"/></rect>`
+    ? `<rect x="${x0}" y="1" width="${n1(xg - x0)}" height="${AG_H - 2}" rx="5" fill="${viva}" filter="url(#b)"><animate attributeName="opacity" dur="2.4s" repeatCount="indefinite" ${SUAVE} values=".16;.32;.16"/></rect>`
     : ''
   const divisa =
     base > 0
@@ -1215,7 +1225,7 @@ function tuboAgente(provedor: BarraAgente['provedor'], estado: BarraAgente['esta
     halo +
     `<rect x="${x0 - 1.2}" y="${yT - 1.2}" width="${util + 2.4}" height="${alt + 2.4}" rx="${alt / 2 + 1.2}" fill="#070b0e" stroke="${aro}" stroke-width="1.2"${baseCrua === null ? ' stroke-dasharray="3 2"' : ''}/>` +
     `<g clip-path="url(#c)">` +
-    (base > 0 ? `<rect x="${x0}" y="${yT}" width="${n1(xb - x0)}" height="${alt}" fill="${tom(cor, -0.55)}"/><rect x="${x0}" y="${yT}" width="${n1(xb - x0)}" height="${n1(alt / 2)}" fill="#fff" fill-opacity=".06"/>` : '') +
+    (base > 0 ? `<rect x="${x0}" y="${yT}" width="${n1(xb - x0)}" height="${alt}" fill="url(#g)" fill-opacity=".84"/><rect x="${x0}" y="${yT}" width="${n1(xb - x0)}" height="${n1(alt / 2)}" fill="#fff" fill-opacity=".06"/>` : '') +
     liquido +
     divisa +
     brilho +
@@ -1226,6 +1236,69 @@ function tuboAgente(provedor: BarraAgente['provedor'], estado: BarraAgente['esta
   )
 }
 
+
+// UI visual V1: toda a linha é uma cápsula; o ✕ continua um Button ao lado.
+const PAINEL_COLUNAS = 27
+const BOTAO_COLUNAS = 11.5
+const UI_COLUNA_PX = 8.4
+const larguraDaCapsula = (colunas: number) => Math.max(180, Math.min(1400, Math.round(colunas * UI_COLUNA_PX - (colunas < 72 ? 0 : PAINEL_COLUNAS * UI_COLUNA_PX) - 2 * UI_COLUNA_PX - COLUNAS * CEL - 24)))
+const xml = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;')
+const MARCA_ESTADO = { rodando: '●', concluido: '✓', erro: '✗', parado: 'Ⅱ', limite: '!' } as const
+function dadosDaCapsula(b: BarraAgente) {
+  const pct = b.gasto * 100
+  const mais = pct >= .05 ? `+${pct < 10 ? pct.toFixed(1) : Math.round(pct)}%` : b.estado !== 'rodando' && b.tokens > 0 ? '<1%' : '+0%'
+  const total = b.base === null ? '–' : `${Math.round(Math.min(1, b.base + b.gasto) * 100)}%`
+  const tarefas = b.tarefas ? `${b.tarefas.feitas}/${b.tarefas.total}` : b.imagens ? `${b.imagens.prontas}/${b.imagens.total} img` : ''
+  const acao = b.estado === 'limite' && b.tentaDeNovo ? `sem cota até ${b.tentaDeNovo}` : b.acao
+  const cor = COR_PROVEDOR[b.provedor]
+  const corEstado = b.estado === 'concluido' ? '#7BD63A' : COR_ESTADO[b.estado] ?? cor
+  return { mais, total, tarefas, acao, cor, corEstado }
+}
+// Quebra conservadora, sem elipse: uma ação longa ganha linhas dentro do próprio vidro.
+function linhasDaCapsula(texto: string, largura: number, fonte = 11.5): string[] {
+  const limite = Math.max(10, Math.floor(largura / (fonte * .59)))
+  const partes = texto.split(/\s+/).flatMap(p => p.length > limite ? p.match(new RegExp('.{1,' + limite + '}', 'gu')) ?? [] : [p])
+  const linhas: string[] = []
+  for (const p of partes) {
+    if (!linhas.length || (linhas[linhas.length - 1]!.length + p.length + 1) > limite) linhas.push(p)
+    else linhas[linhas.length - 1] += ' ' + p
+  }
+  return linhas.length ? linhas : ['']
+}
+function medidaDaCapsula(b: BarraAgente, largura: number) {
+  const W = Math.max(180, Math.min(1400, Math.round(largura)))
+  const d = dadosDaCapsula(b)
+  const cabeca = 32 + b.nome.length * 7.5 + (b.esforco?.length ?? 0) * 6 + 12
+  const detalhe = (b.estado.length + d.tarefas.length + 2) * 5.8
+  const segunda = cabeca + detalhe > W - 16
+  const linhas = linhasDaCapsula(d.acao, W - 48)
+  const acaoY = segunda ? 43 : 30
+  const tuboY = acaoY + (linhas.length - 1) * 13 + 4
+  return { W, H: tuboY + AG_H + 4, segunda, linhas, acaoY, tuboY }
+}
+function capsulaAgente(b: BarraAgente, largura: number): string {
+  const { W, H, segunda, linhas, acaoY, tuboY } = medidaDaCapsula(b, largura)
+  const d = dadosDaCapsula(b)
+  const nomeW = Math.max(35, Math.min(W - 54 - (b.esforco ? b.esforco.length * 6 + 6 : 0), b.nome.length * 7.6))
+  const nomeFit = b.nome.length * 7.5 > nomeW ? ` textLength="${nomeW}" lengthAdjust="spacingAndGlyphs"` : ''
+  const miniW = W - 126
+  const mini = tuboAgente(b.provedor, b.estado, b.base, b.gasto).replace('<svg ', `<svg x="31" y="${tuboY}" `).replace(`width="${AG_W}"`, `width="${miniW}"`).replace('viewBox=', 'preserveAspectRatio="none" viewBox=')
+  const resumo = b.estado + (d.tarefas ? ' · ' + d.tarefas : '')
+  const alt = [b.nome, b.esforco, b.estado, d.tarefas, d.acao, 'weekly ' + d.total, d.mais].filter(Boolean).join(' · ')
+  const glow = b.estado === 'rodando' ? `<animate attributeName="opacity" dur="3.2s" repeatCount="indefinite" ${SUAVE} values=".16;.36;.16"/>` : ''
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none"><title>${xml(alt)}</title><defs>` +
+    '<linearGradient id="cp-glass" x1="0" x2="0" y1="0" y2="1"><stop stop-color="#666c6e"/><stop offset=".15" stop-color="#2d3233"/><stop offset=".47" stop-color="#111516"/><stop offset=".76" stop-color="#191d1e"/><stop offset="1" stop-color="#42484a"/></linearGradient>' +
+    '<linearGradient id="cp-rim" x1="0" x2="0" y1="0" y2="1"><stop stop-color="#d4dadc"/><stop offset=".22" stop-color="#6d777a"/><stop offset=".5" stop-color="#293033"/><stop offset="1" stop-color="#8a969b"/></linearGradient>' +
+    '<linearGradient id="cp-shine" x1="0" x2="0" y1="0" y2="1"><stop stop-color="#fff" stop-opacity=".34"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>' +
+    `<filter id="cp-blur"><feGaussianBlur stdDeviation="2"/></filter></defs><rect x="2" y="2" width="${W - 4}" height="${H - 4}" rx="${Math.min(23, H / 2)}" fill="url(#cp-glass)" stroke="url(#cp-rim)" stroke-width="1.1"/>` +
+    `<path d="M21 4H${W - 21}" stroke="#fff" stroke-opacity=".48" stroke-linecap="round"/><rect x="20" y="4" width="${W - 40}" height="9" rx="4" fill="url(#cp-shine)"/>` +
+    `<circle cx="17" cy="16" r="6" fill="${d.corEstado}" opacity=".25" filter="url(#cp-blur)">${glow}</circle><g font-family="system-ui,Segoe UI,sans-serif">` +
+    `<text x="17" y="19" text-anchor="middle" font-size="14" font-weight="700" fill="${d.corEstado}">${MARCA_ESTADO[b.estado]}</text><text x="31" y="19" font-size="13.5" font-weight="700" fill="${d.cor}"${nomeFit}>${xml(b.nome)}</text>` +
+    (b.esforco ? `<text x="${31 + nomeW + 6}" y="19" font-size="10" fill="#b1b6b8">${xml(b.esforco)}</text>` : '') +
+    `<text x="${segunda ? 31 : W - 17}" y="${segunda ? 32 : 18}" text-anchor="${segunda ? 'start' : 'end'}" font-size="10" fill="${d.corEstado}">${xml(resumo)}</text>` +
+    linhas.map((l, i) => `<text x="31" y="${acaoY + i * 13}" font-size="11.5" fill="#e0e4e5">${xml(l)}</text>`).join('') +
+    `<text x="${W - 53}" y="${tuboY + 13}" text-anchor="end" font-size="12" font-weight="650" fill="#f0f3f3">${d.total}</text><text x="${W - 13}" y="${tuboY + 13}" text-anchor="end" font-size="10.5" fill="${d.cor}">${xml(d.mais)}</text></g>${mini}</svg>`
+}
 
 // O painel Stats: uso por modelo nesta sessão e os jobs do Gemini.
 const PAINEL_STATS = 'stats'
@@ -2221,7 +2294,8 @@ export const register: Register = on => {
 
     const ui = $.ui.resolve(e)
     const { Box, Button, Text } = ui
-    const Svg = 'Svg' in ui ? ui.Svg : undefined
+    // o terminal não desenha Svg (skill plugin-authoring); o kit de testes tem um que não desenha nada, então a superfície decide
+    const Svg = e.surface !== 'terminal' && 'Svg' in ui ? ui.Svg : undefined
 
     // Everything is read at once and next(e) is asked last: while Claude works the band redraws many times a second,
     // and a slow draw that asked next(e) first left the band without the meter whenever a newer redraw cut it short.
@@ -2331,15 +2405,10 @@ export const register: Register = on => {
           <Button key="fechar-aviso" plain label="✕" onPress={() => (avisoParado ? fecharParado($) : fecharAviso($))} />
         </Box>
       )}
-      <Box flexDirection="row" columnGap={1} alignItems="stretch">
+      <Box flexDirection={(e.props.bodyColumns ?? 100) < 72 ? "column" : "row"} columnGap={1} rowGap={.4} alignItems="stretch">
       {/* O painel e as medidas começam no topo; o mascote fica na base da faixa.
-          Tubo, métricas e agentes compartilham a mesma borda esquerda, sem distribuir espaço vertical. */}
-      <Box key="esquerda" flexDirection="row" columnGap={1} flexGrow={1} flexShrink={1} minWidth={0} alignItems="stretch">
-        {Svg && mascote(modo).length <= SVG_MAX && (
-          <Box key="mascote" alignSelf="flex-end" flexShrink={0}>
-            <Svg source={mascote(modo)} alt="Claude mascot" width={COLUNAS * CEL} height={LINHAS * CEL} />
-          </Box>
-        )}
+          Tubo e métricas usam toda a largura; só a lista divide a base com o mascote. */}
+      <Box key="esquerda" flexDirection="column" flexGrow={1} flexShrink={1} minWidth={0}>
       <Box key="medidas" flexDirection="column" rowGap={0} flexGrow={1} flexShrink={1} minWidth={0}>
         <Box key="contexto-linha" flexDirection="row" columnGap={1} alignItems="center" minWidth={0}>
           {Svg && tuboCabe ? (
@@ -2399,10 +2468,23 @@ export const register: Register = on => {
                 </Text>
               )}
             </Box>
-            {/* Uma linha por agente em uso (subagente do Claude, job do Gemini ou do Codex): nome do modelo, esforço, ação, tarefas,
-                o tubo do semanal (a base de quando começou, fosca, e o que ele gastou, vivo) e o ✕. Some sozinha um tempo depois de acabar. */}
+            {/* O mascote só ocupa a base: tubo e métricas usam toda a coluna. */}
+            <Box key="equipe" flexDirection="row" columnGap={1} alignItems="flex-end" minWidth={0} marginTop={.2} flexGrow={1}>
+              {Svg && mascote(modo).length <= SVG_MAX && (
+                <Box key="mascote" alignSelf="flex-end" flexShrink={0}>
+                  <Svg source={mascote(modo)} alt="Claude mascot" width={COLUNAS * CEL} height={LINHAS * CEL} />
+                </Box>
+              )}
+              {Svg && (cincoHoras || semana) && (
+            <Box key="tubos-limite" flexDirection="row" alignItems="flex-end" flexShrink={0}>
+              {cincoHoras && <Svg source={comFase(`${sid}:5h`, guardado(`5h:${cincoHoras.percentUsed}`, () => tuboVertical('5h', cincoHoras.percentUsed)), agora)} alt={`5 hour limit ${cincoHoras.percentUsed}%`} width={FRASCO_W} height={FRASCO_H} />}
+              {bateriaHoje !== null && <Svg source={comFase(`${sid}:24h`, guardado(`24h:${Math.round(bateriaHoje)}`, () => bateria('24h', Math.round(bateriaHoje))), agora)} alt={`Today's battery (1/7 of the weekly limit, carried over at midnight): ${Math.round(bateriaHoje)}%`} width={FRASCO_W} height={FRASCO_H} />}
+              {semana && <Svg source={comFase(`${sid}:wk`, guardado(`wk:${semana.percentUsed}`, () => tuboVertical('wk', semana.percentUsed)), agora)} alt={`Weekly limit ${semana.percentUsed}%`} width={FRASCO_W} height={FRASCO_H} />}
+            </Box>
+          )}
+            </Box>
             {abertas.length > 0 && (
-              <Box key="agentes" flexDirection="column" rowGap={0} marginTop={Svg ? 1 : 0}>
+              <Box key="agentes" flexDirection="column" rowGap={0}>
                 {abertas.slice(0, AGENTES_VISIVEIS).map(b => {
                   const cor = COR_PROVEDOR[b.provedor]
                   const pct = b.gasto * 100
@@ -2413,7 +2495,7 @@ export const register: Register = on => {
                   const extra = b.tarefas ? `${b.tarefas.feitas}/${b.tarefas.total}` : b.imagens ? `${b.imagens.prontas}/${b.imagens.total} img` : ''
                   const acao = b.estado === 'limite' && b.tentaDeNovo ? `sem cota até ${b.tentaDeNovo}` : b.acao
                   return (
-                    <Box key={`agente-${b.id}`} flexDirection="column" minWidth={0} {...(Svg ? { borderStyle: 'round', borderColor: MOLDURA, paddingX: 1 } : {})}>
+                    <Box key={`agente-${b.id}`} flexDirection="column" minWidth={0}>
                     <Box key="cabeca" flexDirection="row" columnGap={1} alignItems="center" minWidth={0}>
                       <Text color={corMarca}>{marca}</Text>
                       <Text color={cor} bold>{b.nome}</Text>
@@ -2443,39 +2525,29 @@ export const register: Register = on => {
             {usadas.length > 0 && <Text dimColor wrap="truncate-end">Skills: {listaSkills}</Text>}
       </Box>
       </Box>
-      {/* O painel: os frascos dos limites e a bateria numa prateleira, e os botões em grade embaixo. */}
-      <Box key="painel" flexDirection="column" alignItems="stretch" flexShrink={0} rowGap={1} {...(Svg ? { borderStyle: 'round', borderColor: MOLDURA, paddingX: 1 } : {})}>
-          {Svg && (cincoHoras || semana) && (
-            <Box key="tubos-limite" flexDirection="row" alignItems="center" justifyContent="center" flexShrink={0}>
-              {cincoHoras && <Svg source={comFase(`${sid}:5h`, guardado(`5h:${cincoHoras.percentUsed}`, () => tuboVertical('5h', cincoHoras.percentUsed)), agora)} alt={`5 hour limit ${cincoHoras.percentUsed}%`} width={VT_W} height={VT_H} />}
-              {bateriaHoje !== null && <Svg source={comFase(`${sid}:24h`, guardado(`24h:${Math.round(bateriaHoje)}`, () => bateria('24h', Math.round(bateriaHoje))), agora)} alt={`Today's battery (1/7 of the weekly limit, carried over at midnight): ${Math.round(bateriaHoje)}%`} width={VT_W} height={VT_H} />}
-              {semana && <Svg source={comFase(`${sid}:wk`, guardado(`wk:${semana.percentUsed}`, () => tuboVertical('wk', semana.percentUsed)), agora)} alt={`Weekly limit ${semana.percentUsed}%`} width={VT_W} height={VT_H} />}
-            </Box>
-          )}
-          {/* A grade estica até a largura do painel, que é a dos três vasos. */}
-          <Box key="botoes" flexDirection="column" alignItems="stretch" rowGap={1} minWidth={Svg ? 24 : undefined}>
-            {/* Button não aceita largura/flex. Células de base zero dividem cada linha; a coluna estica o botão na horizontal. */}
-            <Box key="botoes-1" flexDirection="row" alignItems="stretch" columnGap={1}>
-              <Box flexDirection="column" alignItems="stretch" flexGrow={1} flexShrink={1} minWidth={0} width={Svg ? 0 : undefined}>
-                <Button key="mods" label={Svg ? largo('Mods', 5) : largo('Mods', 4, 5)} onPress={() => $.ui.open({ id: "mods", title: "Mods" })} />
+      {/* O painel: só os botões, em grade 2×2. */}
+      <Box key="painel" flexDirection="column" alignItems="stretch" alignSelf="flex-start" flexShrink={0} rowGap={.4} {...(Svg ? { width: PAINEL_COLUNAS, borderStyle: 'round', borderColor: MOLDURA, backgroundColor: '#252726', paddingX: 1 } : {})}>
+          {/* Células fixas e rótulos de nove caracteres dão a mesma área a todos os botões. */}
+          <Box key="botoes" flexDirection="column" alignItems="center" rowGap={.4}>
+            {[0, 1].map(linha => (
+              <Box key={`botoes-${linha + 1}`} flexDirection="row" columnGap={1} alignItems="center">
+                {(linha === 0 ? ['mods', 'stats'] as const : ['clear', 'handoff'] as const).map(id => {
+                  const principal = id === 'handoff'
+                  const rotulo = id === 'mods' ? 'Mods' : id === 'stats' ? 'Stats' : id === 'clear' ? 'Clear' : gerando ? 'Writing…' : 'Handoff'
+                  const folga = Math.max(0, 9 - rotulo.length)
+                  const label = Svg ? largo(rotulo, Math.floor(folga / 2), Math.ceil(folga / 2)) : rotulo
+                  return (
+                    <Box key={`celula-${id}`} flexDirection="row" width={Svg ? BOTAO_COLUNAS : undefined} height={Svg ? 1.6 : undefined} alignItems="center" justifyContent="center"
+                      {...(Svg ? { backgroundColor: principal ? '#f0f1ee' : '#484b49', borderStyle: 'round', borderColor: principal ? '#ffffff' : '#646965', hover: { backgroundColor: principal ? '#ffffff' : '#5a615b', borderColor: '#a0b2a6' } } : {})}>
+                      <Button key={id} plain={Svg ? true : undefined} variant={principal ? 'primary' : 'secondary'} label={label}
+                        onPress={() => id === 'mods' ? $.ui.open({ id: 'mods', title: 'Mods' }) : id === 'stats' ? void alternarStats($) : id === 'clear' ? limpar($) : handoff($)}>
+                        <Text color={Svg ? principal ? '#202422' : '#f2f4f1' : undefined} bold>{label}</Text>
+                      </Button>
+                    </Box>
+                  )
+                })}
               </Box>
-              <Box flexDirection="column" alignItems="stretch" flexGrow={1} flexShrink={1} minWidth={0} width={Svg ? 0 : undefined}>
-                <Button key="stats" label={Svg ? largo('Stats', 6, 5) : largo('Stats', 4)} onPress={() => void alternarStats($)} />
-              </Box>
-            </Box>
-            <Box key="botoes-2" flexDirection="row" alignItems="stretch" columnGap={1}>
-              <Box flexDirection="column" alignItems="stretch" flexGrow={1} flexShrink={1} minWidth={0} width={Svg ? 0 : undefined}>
-                <Button key="clear" label={Svg ? largo('Clear', 5) : largo('Clear', 4)} onPress={() => limpar($)} />
-              </Box>
-              <Box flexDirection="column" alignItems="stretch" flexGrow={1} flexShrink={1} minWidth={0} width={Svg ? 0 : undefined}>
-                <Button
-                  key="handoff"
-                  variant="primary"
-                  label={gerando ? 'Writing handoff…' : largo('Handoff', 3)}
-                  onPress={() => handoff($)}
-                />
-              </Box>
-            </Box>
+            ))}
           </Box>
       </Box>
       </Box>

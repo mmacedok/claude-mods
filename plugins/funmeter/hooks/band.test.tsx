@@ -2,6 +2,15 @@ import { test, expect, mock } from 'claude-code/testing'
 
 declare const setTimeout: (f: (...a: any[]) => void, ms: number) => unknown
 
+// Os dados migraram de Text para a cápsula SVG no desktop; ambos continuam observáveis.
+async function textosDaFaixa(ui: any): Promise<string> {
+  const textos = ((await ui.findAll({ type: 'Text' })) as any[]).map(x => x.text ?? '')
+  const svgs = ((await ui.findAll({ type: 'Svg' })) as any[]).flatMap(x => [
+    x.props.alt ?? '', ...[...(x.props.source as string).matchAll(/<text\b[^>]*>([^<]*)<\/text>/g)].map(m => m[1] ?? ''),
+  ])
+  return [...textos, ...svgs].join(' ').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&')
+}
+
 const SURFACES = ['terminal', 'desktop'] as const
 const PROPS = { hasSurvey: false, isWorking: false, maxRows: 40, bodyColumns: 120 } as any
 
@@ -185,8 +194,9 @@ test('a Claude subagent gets a bar named after its model, with tasks, action and
       else {
         expect(await ui.find({ key: 'mascote' })).toBeDefined()
         expect(await ui.find({ key: 'tubos-limite' })).toBeDefined()
+        expect((await ui.find({ key: 'fechar-a1' }))?.type).toBe('Button')
       }
-      const textos = ((await ui.findAll({ type: 'Text' })) as any[]).map(x => x.text)
+      const textos = await textosDaFaixa(ui)
       for (const texto of ['Haiku', '1/2', '✓', '+3.0%']) expect(textos).toContain(texto)
       await ui.unmount()
     }
@@ -230,7 +240,7 @@ test('a Gemini job shows from its live file, starts at the weekly use and adds w
   await estado($)
   const barra = async () => {
     const ui = await $.ui.mount({ plugin: 'funmeter', surface: 'desktop', component: 'AbovePrompt', props: PROPS })
-    const r = { achou: await ui.find({ key: 'agente-g1' }), textos: ((await ui.findAll({ type: 'Text' })) as any[]).map(x => x.text) }
+    const r = { achou: await ui.find({ key: 'agente-g1' }), textos: await textosDaFaixa(ui) }
     await ui.unmount()
     return r
   }

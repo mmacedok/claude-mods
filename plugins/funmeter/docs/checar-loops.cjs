@@ -22,7 +22,7 @@ function loadDrawings(source) {
   const code = ['type BarraAgente = any; type Fatias = any;',
     slice('const LARANJA', '// A pasta do usuário'), slice('const TIPOS', 'const MAX_SKILLS'),
     slice('const TUBO_H', '// O painel Stats:'),
-    'globalThis.drawings = { mascote, tubo, tuboVertical, bateria, tuboAgente, comFase, emFase };'].join('\n');
+    'globalThis.drawings = { mascote, tubo, tuboVertical, bateria, tuboAgente, capsulaAgente, medidaDaCapsula, comFase, emFase };'].join('\n');
   const context = vm.createContext({});
   vm.runInContext(stripTypeScriptTypes(code), context, { filename: SOURCE });
   return context.drawings;
@@ -142,6 +142,10 @@ function casesFor(d) {
   for (const pct of [-130, 0, 1, 13, 15, 16, 64, 100, 130]) add('bateria/' + pct, () => d.bateria('24h', pct));
   for (const provider of ['Claude', 'Gemini', 'Codex']) for (const state of ['rodando', 'concluido', 'erro', 'parado', 'limite']) for (const [base, spent] of [[null, 0], [0, 0], [.27, .03], [.3, .25], [.97, .03]])
     add('agente/' + provider + '/' + state + '/' + base + '/' + spent, () => d.tuboAgente(provider, state, base, spent));
+  for (const width of [180, 300, 640, 1400]) for (const state of ['rodando', 'concluido', 'erro', 'parado', 'limite']) {
+    const b = { id: 'a', nome: 'Sol & <review>', esforco: 'xhigh', acao: 'Revisando o layout e executando todas as verificações em uma janela estreita', provedor: 'Codex', estado: state, base: .27, gasto: .03, tokens: 1000, tarefas: { feitas: 3, total: 7 }, tentaDeNovo: '18:30' };
+    add('capsula/' + state + '/' + width, () => d.capsulaAgente(b, width));
+  }
   return cases;
 }
 function runCheck(source = fs.readFileSync(SOURCE, 'utf8')) {
@@ -175,7 +179,7 @@ function runCheck(source = fs.readFileSync(SOURCE, 'utf8')) {
           throw Error('Visible reset at ' + t0 + ': ' + v[i] + ' -> ' + v[j]);
         };
         const reason = reset(v.length - 1, 0, 1, 0); accepted[reason] = (accepted[reason] || 0) + 1;
-        if (/^(frasco|bateria|agente)\//.test(name) && (a.type === 'translate' || ['cx', 'cy', 'rx'].includes(a.attributeName)) && v[0] === v.at(-1) && !equivalent(a, v.at(-2), v.at(-1))) {
+        if (/^(frasco|bateria|agente|capsula)\//.test(name) && (a.type === 'translate' || ['cx', 'cy', 'rx'].includes(a.attributeName)) && v[0] === v.at(-1) && !equivalent(a, v.at(-2), v.at(-1))) {
           assert(hidden(n.parent, a, k.at(-2)) && hidden(n.parent, a, 1), 'Return interval must stay invisible with a matching duration');
         }
         for (let i = 1; i < k.length; i++) {

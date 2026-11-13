@@ -1,5 +1,9 @@
 # FunMeter changelog
 
+## 0.8.1 (2026-11-13)
+
+- Panel fixes: the buttons no longer sit on top of the flask labels, the four buttons line up as a grid, and the battery label is "24h" so it reads at the same size as the others.
+
 ## 0.8.0 (2026-11-13)
 
 - Agent bars get their final look: one row per agent with a glass tube for its provider's weekly limit. The matte part is the weekly use when the agent began; the bright part on top is what the agent added, with a white divider and a pointer so even 1% reads. While the agent runs the tube ripples, glows and shimmers; done, error, stopped and out-of-quota each have their own colour.

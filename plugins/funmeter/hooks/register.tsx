@@ -1095,7 +1095,7 @@ function bateria(rotulo: string, restante: number): string {
   const pisca = fraca ? `<animate attributeName="stroke-opacity" dur="1.2s" repeatCount="indefinite" ${SUAVE} values="1;.3;1"/>` : ''
   const contorno = fraca ? '#E24B4A' : dourada ? '#FFD86B' : 'url(#k)'
   const corTexto = dourada ? '#FFD86B' : numero < 0 ? '#F09595' : '#ecece6'
-  // "Energy 130%" não cabe em 13px: a letra diminui para caber na largura (cerca de 0,6 em por caractere)
+  // "24h -130%" pode não caber em 13px: a letra diminui para caber na largura (cerca de 0,6 em por caractere)
   const texto = `${rotulo} ${numero}%`
   const tamanhoTexto = Math.min(13, Math.floor(((VT_W - 2) / (texto.length * 0.6)) * 10) / 10)
   return (
@@ -1400,6 +1400,7 @@ const PASTA_LIVE: Record<'Gemini' | 'Codex', string> = {
 const FERRAMENTA_JOB = /^mcp__(gemini__gemini_(start|run)|codex__codex_(start|tarefa))$/
 const BARRAS_MAX = 12
 const AGENTES_VISIVEIS = 4
+const COLUNA_BOTAO = 10 // largura de cada coluna da grade de botões, em colunas de texto
 const SOME_DEPOIS_MS = 10 * 60 * 1000 // a barra de um agente que acabou sai sozinha depois disto
 const RECENTE_MS = 3 * 60 * 1000 // uma subida do semanal logo depois do fim ainda é do agente que acabou
 const ESFORCOS = ['low', 'medium', 'high', 'xhigh', 'max']
@@ -2284,26 +2285,26 @@ export const register: Register = on => {
             {usadas.length > 0 && <Text dimColor wrap="truncate-end">Skills: {listaSkills}</Text>}
       </Box>
       {/* O painel: os frascos dos limites e a bateria numa prateleira, e os botões em grade embaixo. */}
-      <Box key="painel" flexDirection="column" alignItems="center" flexShrink={0} rowGap={Svg ? 0 : 1} {...(Svg ? { borderStyle: 'round', borderColor: MOLDURA, paddingX: 1 } : {})}>
+      <Box key="painel" flexDirection="column" alignItems="center" flexShrink={0} rowGap={1} {...(Svg ? { borderStyle: 'round', borderColor: MOLDURA, paddingX: 1 } : {})}>
           {Svg && (cincoHoras || semana) && (
             <Box key="tubos-limite" flexDirection="row" alignItems="center" flexShrink={0}>
               {cincoHoras && <Svg source={comFase(`${sid}:5h`, tuboVertical('5h', cincoHoras.percentUsed), agora)} alt={`5 hour limit ${cincoHoras.percentUsed}%`} width={VT_W} height={VT_H} />}
-              {bateriaHoje !== null && <Svg source={comFase(`${sid}:24h`, bateria('Energy', bateriaHoje), agora)} alt={`Today's battery (1/7 of the weekly limit, carried over at midnight): ${Math.round(bateriaHoje)}%`} width={VT_W} height={VT_H} />}
+              {bateriaHoje !== null && <Svg source={comFase(`${sid}:24h`, bateria('24h', bateriaHoje), agora)} alt={`Today's battery (1/7 of the weekly limit, carried over at midnight): ${Math.round(bateriaHoje)}%`} width={VT_W} height={VT_H} />}
               {semana && <Svg source={comFase(`${sid}:wk`, tuboVertical('wk', semana.percentUsed), agora)} alt={`Weekly limit ${semana.percentUsed}%`} width={VT_W} height={VT_H} />}
             </Box>
           )}
           <Box key="botoes-1" flexDirection="row" columnGap={1} justifyContent="center">
-            <Button key="mods" label="Mods" onPress={() => $.ui.open({ id: "mods", title: "Mods" })} />
-            <Button key="stats" label="Stats" onPress={() => void alternarStats($)} />
+            <Box flexDirection="column" width={COLUNA_BOTAO}><Button key="mods" label="Mods" onPress={() => $.ui.open({ id: "mods", title: "Mods" })} /></Box>
+            <Box flexDirection="column" width={COLUNA_BOTAO}><Button key="stats" label="Stats" onPress={() => void alternarStats($)} /></Box>
           </Box>
           <Box key="botoes-2" flexDirection="row" columnGap={1} justifyContent="center">
-            <Button key="clear" label="Clear" onPress={() => limpar($)} />
-            <Button
+            <Box flexDirection="column" width={COLUNA_BOTAO}><Button key="clear" label="Clear" onPress={() => limpar($)} /></Box>
+            <Box flexDirection="column" width={COLUNA_BOTAO}><Button
               key="handoff"
               variant="primary"
               label={gerando ? 'Writing handoff…' : 'Handoff'}
               onPress={() => handoff($)}
-            />
+            /></Box>
           </Box>
       </Box>
       </Box>

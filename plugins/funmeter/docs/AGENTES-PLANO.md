@@ -135,7 +135,7 @@ Regras do projeto (não quebrar):
 - `comFase` põe `begin` em cada `<animate>` dos frascos, bateria e tubo: **não escreva `begin`** nesses.
 - Cenas da mesma `pista` não podem se sobrepor no tempo (dá erro).
 - Cada SVG abaixo de **131072 caracteres**.
-- Testes: `claude plugin test plugins/funmeter` na raiz do repo (hoje 27/27). Testes da bateria exigem `>Energy N%<` e `#FFD86B` só quando dourada.
+- Testes: `claude plugin test plugins/funmeter` na raiz do repo (hoje 27/27). Testes da bateria exigem `>24h N%<` e `#FFD86B` só quando dourada.
 - Nunca gravar em C:; em E: só na pasta de rascunho da sessão.
 - Publicar: subir a versão em `CHANGELOG.md`, `.claude-plugin/marketplace.json` e `plugins/funmeter/.claude-plugin/plugin.json`;
   commit em `main` como `funmeter X.Y.Z: ...`; git sem identidade → `-c user.name="mmacedok" -c user.email=<do último commit>`.

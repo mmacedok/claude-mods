@@ -541,8 +541,8 @@ async function comCotaDia($: any, on: any) {
   const ve = async (texto: string | null): Promise<string | undefined> => {
     const ui = await $.ui.mount({ plugin: 'funmeter', surface: 'desktop', component: 'AbovePrompt', props: PROPS })
     const fontes: string[] = await fontesDe(ui)
-    const svg = fontes.find(f => f.includes('>Energy '))
-    const rotulo = svg?.match(/>(Energy -?[0-9]+%)</)?.[1] ?? null
+    const svg = fontes.find(f => f.includes('>24h '))
+    const rotulo = svg?.match(/>(24h -?[0-9]+%)</)?.[1] ?? null
     expect(rotulo).toBe(texto)
     await ui.unmount()
     return svg
@@ -554,12 +554,12 @@ test('what is left today is added to tomorrow, and the battery turns gold above 
   const { relogio, semana, ve } = await comCotaDia($, on)
   const reinicio = local(14, 10) // semana começou hoje às 10h
   await semana(0, reinicio)
-  expect(await ve('Energy 100%')).not.toContain('#FFD86B')
+  expect(await ve('24h 100%')).not.toContain('#FFD86B')
   await semana(10, reinicio)
-  await ve('Energy 30%') // 10% de 14,3%
+  await ve('24h 30%') // 10% de 14,3%
   await relogio.advance(local(8, 0, 1) - AGORA) // passou da meia-noite
   await semana(10, reinicio)
-  const dourada = (await ve('Energy 130%')) ?? ''
+  const dourada = (await ve('24h 130%')) ?? ''
   expect(dourada).toContain('#FFD86B') // sobraram 30%: dourada
   // nenhuma tag com o mesmo atributo duas vezes (comFase põe begin em cada <animate>; um segundo deixa o SVG inválido)
   for (const tag of dourada.match(/<[a-zA-Z][^>]*>/g) ?? []) {
@@ -567,31 +567,31 @@ test('what is left today is added to tomorrow, and the battery turns gold above 
     expect(new Set(nomes).size).toBe(nomes.length)
   }
   await semana(15, reinicio)
-  expect(await ve('Energy 95%')).not.toContain('#FFD86B') // gastou o extra: volta ao normal
+  expect(await ve('24h 95%')).not.toContain('#FFD86B') // gastou o extra: volta ao normal
 })
 
 test('going past the day borrows from tomorrow', async ($, on) => {
   const { relogio, semana, ve } = await comCotaDia($, on)
   const reinicio = local(14, 10)
   await semana(20, reinicio)
-  await ve('Energy -40%') // passou da cota: negativo
+  await ve('24h -40%') // passou da cota: negativo
   await relogio.advance(local(8, 0, 1) - AGORA)
   await semana(20, reinicio)
-  await ve('Energy 60%') // os 40% que faltaram saem do dia seguinte
+  await ve('24h 60%') // os 40% que faltaram saem do dia seguinte
 })
 
 test('a day in the middle of the week counts every day before it', async ($, on) => {
   const { semana, ve } = await comCotaDia($, on)
   await semana(60, local(10, 15)) // começou dia 3 às 15h: hoje é o 5º dia, liberados 5/7 = 71,4%
-  await ve('Energy 80%')
+  await ve('24h 80%')
 })
 
 test('the last partial day only has what is left of the week', async ($, on) => {
   const { semana, ve } = await comCotaDia($, on)
   await semana(90, local(7, 18)) // começou dia 31/10 às 18h: hoje é o 8º dia do calendário
-  await ve('Energy 70%')
+  await ve('24h 70%')
   await semana(100, local(7, 18))
-  await ve('Energy 0%')
+  await ve('24h 0%')
 })
 
 test('the daily battery stays hidden without a weekly reset time', async ($, on) => {

@@ -1082,7 +1082,13 @@ function tuboVertical(rotulo: string, usado: number, opc: OpcoesFrasco = {}): st
     `<path d="M${cx - 2.4} ${yT}h4.8l-1.2 1.6h-2.4z" fill="#394147"/>` +
     pesEPrateleira(xE, xD, yB + 4.6) +
     pecaDeMetal(xE - 5, yB + 0.8, xD - xE + 10, 5.6) +
-    rotuloDoFrasco(`${rotulo} ${pct}%` + (opc.extra ? ` <tspan fill="${opc.corExtra ?? '#fff'}">${opc.extra}</tspan>` : ''), Math.min(13, Math.floor(118 / Math.max(1, `${rotulo} ${pct}% ${opc.extra ?? ''}`.trim().length))), opc.corRotulo ?? '#ecece6') +
+    (opc.extra
+      // agente: embaixo só o nome, grande; o total e o +gasto vão dentro do vidro, com contorno escuro para ler sobre o líquido
+      ? rotuloDoFrasco(rotulo, Math.min(13, Math.floor(110 / Math.max(1, rotulo.length))), opc.corRotulo ?? '#ecece6') +
+        `<g text-anchor="middle" font-family="system-ui,sans-serif" font-weight="700" stroke="#0b0e11" stroke-width="2.6" stroke-linejoin="round" paint-order="stroke">` +
+        `<text x="${cx}" y="42" font-size="13" fill="#fff">${pct}%</text>` +
+        `<text x="${cx}" y="57" font-size="11" fill="${opc.corExtra ?? '#fff'}">${opc.extra}</text></g>`
+      : rotuloDoFrasco(`${rotulo} ${pct}%`, Math.min(13, Math.floor(118 / Math.max(1, `${rotulo} ${pct}%`.length))), opc.corRotulo ?? '#ecece6')) +
     `</svg>`
   )
 }
@@ -1093,7 +1099,7 @@ function frascoAgente(b: BarraAgente): string {
   const base = b.base === null ? 0 : Math.max(0, Math.min(1, b.base))
   const total = Math.min(1, base + Math.max(0, b.gasto))
   const corRotulo = b.estado === 'erro' ? VERMELHO : b.estado === 'parado' ? '#8C9196' : b.estado === 'limite' ? '#E8B931' : tom(cor, 0.25)
-  const nome = b.nome.length > 7 ? b.nome.slice(0, 6) + '…' : b.nome
+  const nome = b.nome.length > 9 ? b.nome.slice(0, 8) + '…' : b.nome
   // + o que só este agente consumiu do semanal, na cor viva
   const g = Math.max(0, b.gasto) * 100
   const extra = g >= 1 ? `+${Math.round(g)}%` : g >= 0.05 ? `+${g.toFixed(1)}%` : '+0%'
@@ -1575,7 +1581,9 @@ const AGENTES_VISIVEIS = 4
 // Rótulos de mesmo comprimento: se o app não esticar o botão até a célula, ele ainda sai com a mesma largura.
 // O espaço de largura zero nas pontas impede que alguém apare os espaços que não quebram.
 const largo = (rotulo: string, antes: number, depois = antes) => `\u200B${'\u00A0'.repeat(antes)}${rotulo}${'\u00A0'.repeat(depois)}\u200B`
-const SOME_DEPOIS_MS = 10 * 60 * 1000 // a barra de um agente que acabou sai sozinha depois disto
+// a barra de um agente que acabou sai sozinha depois disto (5 min, escolha do Henrique: no app o frasco não tem ✕,
+// porque o botão nativo não diminui e cobria o frasco)
+const SOME_DEPOIS_MS = 5 * 60 * 1000
 const RECENTE_MS = 3 * 60 * 1000 // uma subida do semanal logo depois do fim ainda é do agente que acabou
 const ESFORCOS = ['low', 'medium', 'high', 'xhigh', 'max']
 
@@ -2527,10 +2535,6 @@ export const register: Register = on => {
                           height={FRASCO_H}
                         />
                         ) : null}
-                        {/* ✕ discreto: escondido, sobre o canto do frasco; aparece só com o mouse em cima deste agente (a Box com key é o escopo do hover) */}
-                        <Box position="absolute" top={0} right={0} display="none" hover={{ display: "flex" }}>
-                          <Button key={`fechar-${b.id}`} plain dimColor label="✕" onPress={() => fecharBarra($, b.id)} />
-                        </Box>
                       </Box>
                     )
                   })}

@@ -1,5 +1,10 @@
 # FunMeter changelog
 
+## 0.8.16 (2026-11-13)
+
+- Agent flasks are readable: the name alone under the flask, bigger and uncut; the total and the agent's share inside the glass.
+- No close button on the desktop flasks (the native button covered them); a finished agent leaves on its own after 5 minutes instead of 10.
+
 ## 0.8.15 (2026-11-13)
 
 - Codex's colour is the green #00AD29.

@@ -194,14 +194,14 @@ test('a Claude subagent gets a bar named after its model, with tasks, action and
       else {
         expect(await ui.find({ key: 'mascote' })).toBeDefined()
         expect(await ui.find({ key: 'tubos-limite' })).toBeDefined()
-        expect((await ui.find({ key: 'fechar-a1' }))?.type).toBe('Button')
+        expect(await ui.find({ key: 'fechar-a1' })).toBeUndefined()
       }
       const textos = await textosDaFaixa(ui)
       for (const texto of ['Haiku', '1/2', '✓', '+3.0%']) expect(textos).toContain(texto)
       await ui.unmount()
     }
   }
-  const ui = await $.ui.mount({ plugin: 'funmeter', surface: 'desktop', component: 'AbovePrompt', props: PROPS })
+  const ui = await $.ui.mount({ plugin: 'funmeter', surface: 'terminal', component: 'AbovePrompt', props: PROPS })
   await ui.press({ key: 'fechar-a1' })
   await ui.unmount()
   const de_novo = await $.ui.mount({ plugin: 'funmeter', surface: 'desktop', component: 'AbovePrompt', props: PROPS })
@@ -712,7 +712,7 @@ test('a resumed subagent reopens its closed completed bar without changing its t
   await respostaAgente($, 'a1')
   const antes = (await dado(dados, 'barras'))[0]
   expect(antes.fim).toBe(1000)
-  const ui = await $.ui.mount({ plugin: 'funmeter', surface: 'desktop', component: 'AbovePrompt', props: PROPS })
+  const ui = await $.ui.mount({ plugin: 'funmeter', surface: 'terminal', component: 'AbovePrompt', props: PROPS })
   await ui.press({ key: 'fechar-a1' })
   await ui.unmount()
   expect((await dado(dados, 'barras'))[0].fechada).toBe(true)
